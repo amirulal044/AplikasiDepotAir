@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../product/presentation/product_screen.dart';
-import '../../customer/presentation/customer_screen.dart'; // Import halaman pelanggan
+import '../../customer/presentation/customer_screen.dart';
+import '../../transaction/presentation/transaction_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,7 +22,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadStoreData();
   }
 
-  // Fungsi untuk mengambil data Toko milik owner yang sedang login
   Future<void> _loadStoreData() async {
     try {
       final user = supabase.auth.currentUser;
@@ -46,7 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50], // Background lebih bersih
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: Text(storeData?['store_name'] ?? "Dashboard Depot"),
         backgroundColor: Colors.blue.shade800,
@@ -62,15 +62,13 @@ class _HomeScreenState extends State<HomeScreen> {
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : storeData == null
-          ? const Center(
-              child: Text("Data Toko tidak ditemukan. Cek tabel stores!"),
-            )
+          ? const Center(child: Text("Data Toko tidak ditemukan."))
           : Padding(
               padding: const EdgeInsets.all(20.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // HEADER WELCOME
+                  // HEADER INFO DEPOT
                   Container(
                     padding: const EdgeInsets.all(15),
                     decoration: BoxDecoration(
@@ -88,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          "Halo, Pemilik ${storeData!['store_name']}!",
+                          "Selamat Datang, ${storeData!['store_name']}!",
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -105,10 +103,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   
                   const SizedBox(height: 25),
-                  const Text(
-                    "Menu Utama",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+                  const Text("Menu Utama", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 15),
 
                   // MENU UTAMA (GRID)
@@ -118,22 +113,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisSpacing: 15,
                       mainAxisSpacing: 15,
                       children: [
-                        // 1. MENU TRANSAKSI / KASIR
+                       // 1. KASIR / JUAL
                         _buildMenuCard(
                           context,
                           title: "Kasir / Jual",
                           icon: Icons.shopping_cart_checkout,
                           color: Colors.green,
                           onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Fitur Kasir sedang kita siapkan!"),
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                // Sekarang diarahkan ke TransactionScreen (Daftar Riwayat)
+                                builder: (context) => TransactionScreen(storeId: storeData!['id']),
                               ),
-                            );
+                            ).then((_) => _loadStoreData()); // Refresh dashboard saat kembali
                           },
                         ),
 
-                        // 2. MENU PELANGGAN (BARU)
                         _buildMenuCard(
                           context,
                           title: "Data Pelanggan",
@@ -143,14 +139,13 @@ class _HomeScreenState extends State<HomeScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) =>
-                                    CustomerScreen(storeId: storeData!['id']),
+                                builder: (context) => CustomerScreen(storeId: storeData!['id']),
                               ),
                             );
                           },
                         ),
 
-                        // 3. MENU PRODUK
+                        // 4. PRODUK
                         _buildMenuCard(
                           context,
                           title: "Manajemen Produk",
@@ -160,22 +155,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) =>
-                                    ProductScreen(storeId: storeData!['id']),
+                                builder: (context) => ProductScreen(storeId: storeData!['id']),
                               ),
-                            );
-                          },
-                        ),
-
-                        // 4. MENU LAPORAN (OPSIONAL NANTI)
-                        _buildMenuCard(
-                          context,
-                          title: "Laporan",
-                          icon: Icons.bar_chart,
-                          color: Colors.purple,
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Fitur Laporan segera hadir!")),
                             );
                           },
                         ),
@@ -188,14 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Widget pendukung untuk tampilan kartu menu
-  Widget _buildMenuCard(
-    BuildContext context, {
-    required String title,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
+  Widget _buildMenuCard(BuildContext context, {required String title, required IconData icon, required Color color, required VoidCallback onTap}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
@@ -204,11 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            )
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
           ],
           border: Border.all(color: color.withOpacity(0.1)),
         ),
@@ -217,22 +187,11 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
               child: Icon(icon, size: 35, color: color),
             ),
             const SizedBox(height: 12),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                color: Colors.black87,
-              ),
-            ),
+            Text(title, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
           ],
         ),
       ),

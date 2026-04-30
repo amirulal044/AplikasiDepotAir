@@ -15,9 +15,20 @@ class CustomerRepository {
   }
 
   // CREATE: Tambah pelanggan baru
-  Future<void> addCustomer(CustomerModel customer) async {
-    await _supabase.from('customers').insert(customer.toMap());
+  Future<CustomerModel> addCustomer(CustomerModel customer) async {
+  try {
+    final response = await _supabase
+        .from('customers')
+        .insert(customer.toMap())
+        .select() // Perintah agar Supabase mengembalikan data yang baru di-insert
+        .single(); // Kita hanya mengambil satu baris data saja
+
+    // Mengonversi Map dari Supabase kembali menjadi Object CustomerModel
+    return CustomerModel.fromMap(response);
+  } catch (e) {
+    throw 'Gagal menambah pelanggan: $e';
   }
+}
 
   // UPDATE: Ubah data pelanggan
   Future<void> updateCustomer(CustomerModel customer) async {
