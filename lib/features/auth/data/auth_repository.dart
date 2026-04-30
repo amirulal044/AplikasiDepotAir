@@ -1,37 +1,53 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthRepository {
-  final _supabase = Supabase.instance.client;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-  // FUNGSI DAFTAR (Register)
-  Future<void> register(String email, String password, String storeName) async {
+  Future<AuthResponse> signIn(String email, String password) async {
     try {
-      // 1. Buat User di Auth Supabase
-      final res = await _supabase.auth.signUp(email: email, password: password);
-      
-      if (res.user != null) {
-        // 2. Buat data Toko di tabel 'stores' secara otomatis
-        await _supabase.from('stores').insert({
-          'owner_id': res.user!.id,
-          'store_name': storeName,
+      print("DEBUG: Mencoba login untuk $email...");
+      final response = await _supabase.auth.signInWithPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+      print("DEBUG: Login Berhasil! User ID: ${response.user?.id}");
+      return response;
+    } on AuthException catch (e) {
+      print("DEBUG: Supabase Auth Error: ${e.message}");
+      rethrow; // Melempar error agar ditangkap Provider
+    } catch (e) {
+      print("DEBUG: Error Tidak Terduga: $e");
+      throw "Terjadi kesalahan koneksi atau sistem.";
+    }
+  }
+
+  Future<AuthResponse> signUp(
+    String email,
+    String password,
+    String depotName,
+  ) async {
+    try {
+      print("DEBUG: Mencoba Register untuk $email...");
+      final response = await _supabase.auth.signUp(
+        email: email.trim(),
+        password: password.trim(),
+      );
+
+      if (response.user != null) {
+        print("DEBUG: Auth sukses, mencoba input ke tabel profiles...");
+        await _supabase.from('profiles').insert({
+          'id': response.user!.id,
+          'nama_depot': depotName,
         });
+        print("DEBUG: Input tabel profiles Berhasil!");
       }
+      return response;
+    } on AuthException catch (e) {
+      print("DEBUG: Supabase Auth Error (Register): ${e.message}");
+      rethrow;
     } catch (e) {
-      throw 'Gagal Daftar: $e';
+      print("DEBUG: Error Tabel Profile: $e");
+      throw "Akun terbuat tapi gagal menyimpan nama depot. Cek tabel 'profiles' di Supabase.";
     }
-  }
-
-  // FUNGSI MASUK (Login)
-  Future<void> login(String email, String password) async {
-    try {
-      await _supabase.auth.signInWithPassword(email: email, password: password);
-    } catch (e) {
-      throw 'Gagal Login: $e';
-    }
-  }
-
-  // FUNGSI KELUAR (Logout)
-  Future<void> logout() async {
-    await _supabase.auth.signOut();
   }
 }
