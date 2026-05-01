@@ -21,21 +21,25 @@ class ProductProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> saveProduct(
+  Future<Map<String, dynamic>?> saveProduct(
     String nama,
     String ukuran,
     String harga,
     bool isCoupon,
+    int lastCoupon, // <--- Tambahan
   ) async {
-    if (nama.isEmpty || harga.isEmpty) return false;
-
     try {
-      await _repo.addProduct(nama, ukuran, int.parse(harga), isCoupon);
+      final newProd = await _repo.addProduct(
+        nama,
+        ukuran,
+        int.parse(harga),
+        isCoupon,
+        lastCoupon, // <--- Teruskan ke repo
+      );
       await fetchProducts();
-      return true;
+      return newProd;
     } catch (e) {
-      print("Error save: $e");
-      return false;
+      return null;
     }
   }
 
@@ -45,13 +49,20 @@ class ProductProvider extends ChangeNotifier {
     String ukuran,
     String harga,
     bool isCoupon,
+    int lastCoupon, // <--- Tambahan
   ) async {
     try {
-      await _repo.updateProduct(id, nama, ukuran, int.parse(harga), isCoupon);
-      await fetchProducts(); // Refresh data
+      await _repo.updateProduct(
+        id,
+        nama,
+        ukuran,
+        int.parse(harga),
+        isCoupon,
+        lastCoupon, // <--- Teruskan
+      );
+      await fetchProducts();
       return true;
     } catch (e) {
-      print("Error edit: $e");
       return false;
     }
   }

@@ -36,7 +36,17 @@ class _ProductListScreenState extends State<ProductListScreen> {
                     child: const Icon(Icons.water_drop, color: Colors.white),
                   ),
                   title: Text("${item['nama_produk']} (${item['ukuran']})"),
-                  subtitle: Text("Rp ${item['harga']}"),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Rp ${item['harga']}"),
+                      if (item['is_coupon_enabled'])
+                        Text(
+                          "Kupon Terakhir: #${item['last_coupon_number']}",
+                          style: TextStyle(color: Colors.blue, fontSize: 12),
+                        ),
+                    ],
+                  ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

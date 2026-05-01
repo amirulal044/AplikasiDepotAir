@@ -15,6 +15,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   late TextEditingController nameController;
   late TextEditingController priceController;
   late TextEditingController ukuranController;
+  late TextEditingController kuponController;
   late bool isCouponEnabled;
 
   final List<String> rekomendasiUkuran = ['19L', '15L', '12.5L', '10L'];
@@ -31,6 +32,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     );
     ukuranController = TextEditingController(
       text: widget.product?['ukuran'] ?? '19L',
+    );
+    kuponController = TextEditingController(
+      text: widget.product?['last_coupon_number']?.toString() ?? '0',
     );
     isCouponEnabled = widget.product?['is_coupon_enabled'] ?? true;
   }
@@ -108,6 +112,20 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   setState(() => isCouponEnabled = val);
                 },
               ),
+              if (isCouponEnabled) ...[
+                const SizedBox(height: 15),
+                TextField(
+                  controller: kuponController,
+                  decoration: const InputDecoration(
+                    labelText: "Nomor Kupon Terakhir (Sekarang)",
+                    hintText: "Contoh: 100",
+                    helperText:
+                        "Nomor ini akan bertambah otomatis saat transaksi",
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+              ],
               const SizedBox(height: 30),
               SizedBox(
                 width: double.infinity,
@@ -119,12 +137,22 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   ),
                   onPressed: () async {
                     if (nameController.text.isEmpty ||
-                        priceController.text.isEmpty)
+                        priceController.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Nama dan Harga wajib diisi"),
+                        ),
+                      );
                       return;
+                    }
 
-                    bool success;
+                    // Kita gunakan tipe 'dynamic' karena:
+                    // editProduct mengembalikan bool
+                    // saveProduct mengembalikan Map?
+                    dynamic result;
+
                     if (isEdit) {
-                      success = await context
+                      result = await context
                           .read<ProductProvider>()
                           .editProduct(
                             widget.product!['id'],
@@ -132,28 +160,41 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                             ukuranController.text,
                             priceController.text,
                             isCouponEnabled,
+                            int.tryParse(kuponController.text) ??
+                                0, // <--- Kirim data kupon
                           );
                     } else {
-                      success = await context
+                      result = await context
                           .read<ProductProvider>()
                           .saveProduct(
                             nameController.text,
                             ukuranController.text,
                             priceController.text,
                             isCouponEnabled,
+                            int.tryParse(kuponController.text) ??
+                                0, // <--- Kirim data kupon
                           );
                     }
+
+                    // Logika pengecekan sukses:
+                    // Jika Edit: result harus true
+                    // Jika Tambah Baru: result tidak boleh null
+                    bool isSuccess = isEdit
+                        ? (result == true)
+                        : (result != null);
 
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            success ? "Berhasil disimpan" : "Gagal menyimpan",
+                            isSuccess ? "Berhasil disimpan" : "Gagal menyimpan",
                           ),
-                          backgroundColor: success ? Colors.green : Colors.red,
+                          backgroundColor: isSuccess
+                              ? Colors.green
+                              : Colors.red,
                         ),
                       );
-                      if (success) Navigator.pop(context);
+                      if (isSuccess) Navigator.pop(context);
                     }
                   },
                   child: Text(isEdit ? "PERBARUI PRODUK" : "SIMPAN PRODUK"),

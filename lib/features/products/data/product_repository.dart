@@ -12,20 +12,25 @@ class ProductRepository {
   }
 
   // Tambah Produk
-  Future<void> addProduct(
+  Future<Map<String, dynamic>> addProduct(
     String nama,
     String ukuran,
     int harga,
     bool isCoupon,
+    int lastCoupon, // <--- Tambahan
   ) async {
-    final userId = _supabase.auth.currentUser!.id;
-    await _supabase.from('products').insert({
-      'user_id': userId,
-      'nama_produk': nama,
-      'ukuran': ukuran,
-      'harga': harga,
-      'is_coupon_enabled': isCoupon,
-    });
+    return await _supabase
+        .from('products')
+        .insert({
+          'user_id': _supabase.auth.currentUser!.id,
+          'nama_produk': nama,
+          'ukuran': ukuran,
+          'harga': harga,
+          'is_coupon_enabled': isCoupon,
+          'last_coupon_number': lastCoupon, // <--- Simpan ke DB
+        })
+        .select()
+        .single();
   }
 
   // Edit Produk
@@ -35,6 +40,7 @@ class ProductRepository {
     String ukuran,
     int harga,
     bool isCoupon,
+    int lastCoupon, // <--- Tambahan
   ) async {
     await _supabase
         .from('products')
@@ -43,6 +49,7 @@ class ProductRepository {
           'ukuran': ukuran,
           'harga': harga,
           'is_coupon_enabled': isCoupon,
+          'last_coupon_number': lastCoupon, // <--- Update di DB
         })
         .eq('id', id);
   }

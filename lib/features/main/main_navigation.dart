@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../products/ui/product_list_screen.dart';
+import '../customers/ui/customer_list_screen.dart';
+import '../transactions/ui/transaction_list_screen.dart';
 
 // Import file fitur Anda (jika belum ada, kita buat dummy dulu di bawah)
 class MainNavigation extends StatefulWidget {
@@ -13,9 +15,9 @@ class _MainNavigationState extends State<MainNavigation> {
   // PASTIKAN LIST INI TIDAK KOSONG DAN JUMLAHNYA SAMA DENGAN ITEM DI BOTTOM BAR
   final List<Widget> _pages = [
     const Center(child: Text("Dashboard")), // Index 0
-    const Center(child: Text("Transaksi")), // Index 1
+    TransactionListScreen(), // Index 1 (buat widget ini nanti)
     ProductListScreen(),
-    const Center(child: Text("Pelanggan")), // Index 3
+    CustomerListScreen(),
     const Center(child: Text("Profil")), // Index 4
   ];
 

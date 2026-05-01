@@ -5,6 +5,8 @@ import 'features/auth/logic/auth_provider.dart';
 import 'features/auth/ui/login_screen.dart';
 import 'features/main/main_navigation.dart';
 import 'features/products/logic/product_provider.dart';
+import 'features/customers/logic/customer_provider.dart';
+import 'features/transactions/logic/transaction_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +23,8 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthController()),
         ChangeNotifierProvider(create: (_) => ProductProvider()),
+        ChangeNotifierProvider(create: (_) => CustomerProvider()),
+        ChangeNotifierProvider(create: (_) => TransactionProvider()),
       ],
 
       child: const MyApp(),
