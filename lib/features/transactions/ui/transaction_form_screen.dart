@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../logic/transaction_provider.dart';
-import 'package:depot_air_app/features/customers/logic/customer_provider.dart';
-import 'package:depot_air_app/features/products/logic/product_provider.dart';
+import '../../customers/logic/customer_provider.dart';
+import '../../products/logic/product_provider.dart';
 
 class TransactionFormScreen extends StatefulWidget {
   @override
@@ -10,443 +10,371 @@ class TransactionFormScreen extends StatefulWidget {
 }
 
 class _TransactionFormScreenState extends State<TransactionFormScreen> {
-  // Controller untuk input manual / terpilih
+  // Controller Utama
   final pelangganController = TextEditingController();
   final produkController = TextEditingController();
   final ukuranController = TextEditingController();
-  final kuponController = TextEditingController();
-  final hargaController = TextEditingController();
   final qtyController = TextEditingController(text: "1");
   final kuponAwalController = TextEditingController();
-  // Default 1
-  int unitPrice = 0; // Menyimpan harga satuan produk yang dipilih
+  final hargaController = TextEditingController();
+
+  // State Variables
   String? selectedCustomerId;
   String? selectedProductId;
+  int unitPrice = 0;
   int currentCustomerCouponBalance = 0;
   bool isCouponEnabled = false;
   bool useRedemption = false;
+
+  // Helper untuk hitung rentang kupon otomatis
   String get couponRangeDisplay {
     int start = int.tryParse(kuponAwalController.text) ?? 0;
     int qty = int.tryParse(qtyController.text) ?? 1;
     if (qty <= 1) return start.toString();
-    int end = start + qty - 1;
-    return "$start - $end";
+    return "$start - ${start + qty - 1}";
   }
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await context.read<TransactionProvider>().initForm();
-      // Set nomor kupon otomatis (last + 1)
-      kuponController.text =
-          (context.read<TransactionProvider>().lastCouponNumber + 1).toString();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<TransactionProvider>().initForm();
     });
   }
+
+  // --- LOGIKA PERHITUNGAN HARGA (Poin 3: Bayar vs Tukar) ---
+  void updateSubtotal() {
+  // Jika kosong, anggap 0 sementara agar tidak error saat perhitungan
+  int qty = int.tryParse(qtyController.text) ?? 0; 
+  
+  if (useRedemption) {
+    hargaController.text = "0";
+  } else {
+    hargaController.text = (unitPrice * qty).toString();
+  }
+}
 
   @override
   Widget build(BuildContext context) {
     final prov = context.watch<TransactionProvider>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Transaksi Baru")),
+      appBar: AppBar(title: const Text("Nota Transaksi Baru")),
       body: prov.isLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // --- BAGIAN PELANGGAN ---
-                  const Text(
-                    "Pelanggan",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      // 1. Kolom Pencarian / Autocomplete
-                      Expanded(
-                        child: Autocomplete<Map<String, dynamic>>(
-                          displayStringForOption: (option) => option['nama'],
-                          optionsBuilder: (textEditingValue) {
-                            if (textEditingValue.text == '')
-                              return const Iterable.empty();
-                            // Mencari di master data pelanggan
-                            return prov.masterCustomers.where(
-                              (c) => c['nama'].toLowerCase().contains(
-                                textEditingValue.text.toLowerCase(),
-                              ),
-                            );
-                          },
-                          onSelected: (selection) {
-                            // KETIKA PELANGGAN DIPILIH DARI REKOMENDASI
-                            setState(() {
-                              selectedCustomerId = selection['id'];
-                              pelangganController.text = selection['nama'];
-                              currentCustomerCouponBalance =
-                                  selection['coupon_balance'] ?? 0;
-                            });
-                          },
-                          fieldViewBuilder:
-                              (
-                                context,
-                                controller,
-                                focusNode,
-                                onFieldSubmitted,
-                              ) {
-                                return TextField(
-                                  controller: controller
-                                    ..text = pelangganController.text,
-                                  focusNode: focusNode,
-                                  decoration: const InputDecoration(
-                                    hintText: "Cari pelanggan...",
-                                    border: OutlineInputBorder(),
-                                    prefixIcon: Icon(Icons.search),
-                                  ),
-                                  onChanged: (val) {
-                                    // LOGIKA PENTING:
-                                    // Simpan teks yang diketik ke controller utama
-                                    pelangganController.text = val;
-
-                                    // Jika user mulai mengetik ulang, hapus koneksi dengan ID lama
-                                    // Ini menandakan input berubah menjadi "Manual"
-                                    if (selectedCustomerId != null) {
-                                      setState(() {
-                                        selectedCustomerId = null;
-                                        currentCustomerCouponBalance = 0;
-                                      });
-                                    }
-                                  },
-                                );
-                              },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-
-                      // 2. Tombol Tambah Pelanggan Baru (Data Lengkap)
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.blue,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.person_add,
-                            color: Colors.white,
-                          ),
-                          tooltip: "Daftar Pelanggan Baru",
-                          onPressed: () =>
-                              _showAddCustomerSheet(context), // Munculkan Modal
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  // 3. Info Status Pelanggan
-                  if (selectedCustomerId != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Text(
-                        "Pelanggan Terdaftar (Kupon: $currentCustomerCouponBalance/10)",
-                        style: const TextStyle(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    )
-                  else if (pelangganController.text.isNotEmpty)
-                    const Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Text(
-                        "Mode Input Manual (Pelanggan Umum)",
-                        style: TextStyle(color: Colors.orange, fontSize: 12),
-                      ),
-                    ),
-
-                  const SizedBox(height: 20),
-
-                  // --- BAGIAN PRODUK ---
-                  const Text(
-                    "Produk",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: selectedProductId,
-                          decoration: const InputDecoration(
-                            hintText: "Pilih Produk",
-                            border: OutlineInputBorder(),
-                          ),
-                          items: prov.masterProducts.map((p) {
-                            return DropdownMenuItem<String>(
-                              value: p['id'].toString(),
-                              child: Text(
-                                "${p['nama_produk']} (${p['ukuran']})",
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            final p = prov.masterProducts.firstWhere(
-                              (item) => item['id'] == val,
-                            );
-                            setState(() {
-                              selectedProductId = val;
-                              produkController.text = p['nama_produk'];
-                              ukuranController.text = p['ukuran'];
-
-                              // SIMPAN HARGA SATUAN
-                              unitPrice = p['harga'];
-
-                              // HITUNG TOTAL: Harga Satuan * QTY
-                              int qty = int.tryParse(qtyController.text) ?? 1;
-                              hargaController.text = (unitPrice * qty)
-                                  .toString();
-
-                              // AMBIL NOMOR DARI PRODUK YANG DIPILIH
-                              int lastNum = p['last_coupon_number'] ?? 0;
-                              kuponAwalController.text = (lastNum + 1)
-                                  .toString();
-
-                              isCouponEnabled =
-                                  (p['ukuran'] == '19L' ||
-                                  p['is_coupon_enabled'] == true);
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.blue,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: IconButton(
-                          icon: const Icon(Icons.add_box, color: Colors.white),
-                          onPressed: () => _showAddProductSheet(context),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 15),
-
-                  // FIELD QTY, UKURAN, DAN HARGA TOTAL
-                  Row(
-                    children: [
-                      // --- INPUT QTY ---
-                      Expanded(
-                        flex: 1, // Lebih kecil
-                        child: TextField(
-                          controller: qtyController,
-                          decoration: const InputDecoration(
-                            labelText: "QTY",
-                            border: OutlineInputBorder(),
-                          ),
-                          keyboardType: TextInputType.number,
-                          onChanged: (val) {
-                            setState(() {
-                              int qty = int.tryParse(val) ?? 0;
-                              // Jika tidak sedang tukar kupon, update harga total
-                              if (!useRedemption) {
-                                hargaController.text = (unitPrice * qty)
-                                    .toString();
-                              }
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      // --- UKURAN ---
-                      Expanded(
-                        flex: 2,
-                        child: TextField(
-                          controller: ukuranController,
-                          decoration: const InputDecoration(
-                            labelText: "Ukuran",
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (val) {
-                            setState(() {
-                              isCouponEnabled = (val.toUpperCase() == '19L');
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  // --- HARGA TOTAL (OTOMATIS) ---
-                  TextField(
-                    controller: hargaController,
-                    decoration: const InputDecoration(
-                      labelText: "Total Harga",
-                      border: OutlineInputBorder(),
-                      prefixText: "Rp ",
-                      filled: true,
-                      fillColor: Color(
-                        0xFFF5F5F5,
-                      ), // Beri warna sedikit berbeda karena otomatis
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (val) {
-                      // Jika admin ingin mengubah harga total secara manual (override)
-                      // kita tetap izinkan, tapi unitPrice tidak berubah.
-                    },
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // --- BAGIAN KUPON ---
-                  if (isCouponEnabled) ...[
-                    const Text(
-                      "Sistem Kupon (19L)",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    Row(
+          : Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // INPUT NOMOR AWAL
-                        Expanded(
-                          flex: 2,
-                          child: TextField(
-                            controller: kuponAwalController,
-                            decoration: const InputDecoration(
-                              labelText: "No. Kupon",
-                              border: OutlineInputBorder(),
-                            ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (val) => setState(
-                              () {},
-                            ), // Refresh UI untuk update rentang
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-
-                        // TAMPILAN RENTANG (Otomatis menyesuaikan QTY)
-                        Expanded(
-                          flex: 3,
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.blue.shade200),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  "Kupon Fisik:",
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.blue,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  couponRangeDisplay, // Memanggil fungsi hitung tadi
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: Colors.blue,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                        _buildPelangganSection(prov),
+                        const Divider(height: 30),
+                        _buildProductInputSection(prov),
+                        const SizedBox(height: 20),
+                        const Text("Daftar Belanjaan:", 
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 10),
+                        _buildCartList(prov),
                       ],
                     ),
-
-                    // Switch Tukar Kupon tetap di bawahnya
-                    if (currentCustomerCouponBalance >= 10)
-                      SwitchListTile(
-                        title: const Text("Tukar 10 Kupon (Gratis)"),
-                        value: useRedemption,
-                        onChanged: (val) {
-                          setState(() {
-                            useRedemption = val;
-                            if (val)
-                              hargaController.text = "0";
-                            else {
-                              int qty = int.tryParse(qtyController.text) ?? 1;
-                              hargaController.text = (unitPrice * qty)
-                                  .toString();
-                            }
-                          });
-                        },
-                      ),
-                  ],
-                  const SizedBox(height: 40),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 60,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                      ),
-                      onPressed: () async {
-                        int startNum =
-                            int.tryParse(kuponAwalController.text) ?? 0;
-                        int qty = int.tryParse(qtyController.text) ?? 1;
-                        int lastNumUsed = startNum + qty - 1;
-
-                        final success = await prov.checkout(
-                          customerId: selectedCustomerId,
-                          productId: selectedProductId,
-                          namaPelanggan: pelangganController.text,
-                          namaProduk: produkController.text,
-                          ukuran: ukuranController.text,
-                          nomorKupon: lastNumUsed,
-                          qty: qty, // <--- KIRIM QTY NYA
-                          isRedemption: useRedemption,
-                          totalHarga: int.tryParse(hargaController.text) ?? 0,
-                        );
-
-                        if (context.mounted) {
-                          if (success) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Transaksi Berhasil!"),
-                              ),
-                            );
-                            Navigator.pop(context);
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Transaksi Gagal!"),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        }
-                      },
-                      child: const Text(
-                        "SIMPAN TRANSAKSI",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
                   ),
-                ],
+                ),
+                _buildFooter(prov),
+              ],
+            ),
+    );
+  }
+
+  // --- 1. SEKSI PELANGGAN (HYBRID) ---
+  Widget _buildPelangganSection(TransactionProvider prov) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Pelanggan", style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Autocomplete<Map<String, dynamic>>(
+                displayStringForOption: (option) => option['nama'],
+                optionsBuilder: (textEditingValue) {
+                  return prov.masterCustomers.where((c) => 
+                      c['nama'].toLowerCase().contains(textEditingValue.text.toLowerCase()));
+                },
+                onSelected: (selection) {
+                  setState(() {
+                    selectedCustomerId = selection['id'];
+                    pelangganController.text = selection['nama'];
+                    currentCustomerCouponBalance = selection['coupon_balance'] ?? 0;
+                  });
+                },
+                fieldViewBuilder: (ctx, ctrl, focus, onSubmit) {
+                  return TextField(
+                    controller: ctrl..text = pelangganController.text,
+                    focusNode: focus,
+                    decoration: const InputDecoration(hintText: "Cari/Ketik Pelanggan", border: OutlineInputBorder()),
+                    onChanged: (val) {
+                      pelangganController.text = val;
+                      if(selectedCustomerId != null) setState(() {
+                        selectedCustomerId = null;
+                        currentCustomerCouponBalance = 0;
+                      });
+                    },
+                  );
+                },
               ),
             ),
+            const SizedBox(width: 8),
+            IconButton(icon: const Icon(Icons.person_add, color: Colors.blue), 
+              onPressed: () => _showAddCustomerSheet(context)),
+          ],
+        ),
+        if (selectedCustomerId != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: Row(
+              children: [
+                const Icon(Icons.confirmation_number, size: 16, color: Colors.blue),
+                const SizedBox(width: 5),
+                Text("Saldo Kupon: $currentCustomerCouponBalance | ", style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                Text("Maks Gratis: ${currentCustomerCouponBalance ~/ 10} Galon", style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  // --- 2. SEKSI INPUT PRODUK (HYBRID + FLEXIBLE REDEMPTION) ---
+  Widget _buildProductInputSection(TransactionProvider prov) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Input Produk", style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          
+          // Hybrid Product Dropdown/Autocomplete (Menggunakan dropdown untuk kemudahan)
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: selectedProductId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(hintText: "Pilih Produk", border: OutlineInputBorder(), fillColor: Colors.white, filled: true),
+                  items: prov.masterProducts.map((p) => DropdownMenuItem(
+                    value: p['id'].toString(), 
+                    child: Text("${p['nama_produk']} (${p['ukuran']})"))).toList(),
+                  onChanged: (val) {
+                    final p = prov.masterProducts.firstWhere((item) => item['id'] == val);
+                    setState(() {
+                      selectedProductId = val;
+                      produkController.text = p['nama_produk'];
+                      ukuranController.text = p['ukuran'];
+                      unitPrice = p['harga'];
+                      isCouponEnabled = (p['ukuran'] == '19L');
+                      kuponAwalController.text = ((p['last_coupon_number'] ?? 0) + 1).toString();
+                      updateSubtotal();
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(icon: const Icon(Icons.add_box, color: Colors.blue), 
+                onPressed: () => _showAddProductSheet(context)),
+            ],
+          ),
+          
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: TextField(
+                controller: qtyController, 
+                decoration: const InputDecoration(labelText: "QTY", border: OutlineInputBorder(), fillColor: Colors.white, filled: true),
+                keyboardType: TextInputType.number,
+                onChanged: (val) => setState(() => updateSubtotal()),
+              )),
+              const SizedBox(width: 10),
+              Expanded(child: TextField(
+                controller: ukuranController, 
+                decoration: const InputDecoration(labelText: "Ukuran", border: OutlineInputBorder(), fillColor: Colors.white, filled: true),
+                onChanged: (val) => setState(() => isCouponEnabled = (val.toUpperCase() == '19L')),
+              )),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: hargaController, 
+            decoration: const InputDecoration(labelText: "Total Baris Ini", border: OutlineInputBorder(), prefixText: "Rp ", fillColor: Colors.white, filled: true),
+            keyboardType: TextInputType.number,
+          ),
+          
+          // --- LOGIKA KUPON (Poin 3: Bayar vs Tukar) ---
+          if (isCouponEnabled) ...[
+            const SizedBox(height: 10),
+            // Switch Tukar Kupon Fleksibel
+            if (currentCustomerCouponBalance >= 10)
+              SwitchListTile(
+  contentPadding: EdgeInsets.zero,
+  title: Text(
+    "Tukar Kupon (Gratis ${qtyController.text.isEmpty ? '0' : qtyController.text} Galon)", 
+    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green)
+  ),
+  subtitle: Text(
+    "Butuh ${(int.tryParse(qtyController.text) ?? 0) * 10} Kupon" // <--- Gunakan ?? 0, hapus tanda !
+  ),
+  value: useRedemption,
+  onChanged: (val) {
+    setState(() {
+      useRedemption = val;
+      updateSubtotal();
+    });
+  },
+),
+            
+            // Input Kupon HANYA MUNCUL jika Berbayar
+            if (!useRedemption)
+              Row(
+                children: [
+                  Expanded(child: TextField(
+                    controller: kuponAwalController, 
+                    decoration: const InputDecoration(labelText: "No. Kupon Awal", border: OutlineInputBorder(), fillColor: Colors.white, filled: true),
+                    keyboardType: TextInputType.number,
+                    onChanged: (val) => setState(() {}),
+                  )),
+                  const SizedBox(width: 10),
+                  Expanded(child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(5)),
+                    child: Text("Rentang: $couponRangeDisplay", style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
+                  )),
+                ],
+              ),
+          ],
+          
+          const SizedBox(height: 15),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                if (produkController.text.isEmpty) return;
+  
+  // Ambil nilai qty, jika gagal parse atau kosong, beri nilai 0
+  int qty = int.tryParse(qtyController.text) ?? 0;
+  
+  if (qty <= 0) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Jumlah (QTY) minimal 1"), backgroundColor: Colors.orange)
+    );
+    return;
+  }
+
+  int start = int.tryParse(kuponAwalController.text) ?? 0;
+
+                // 1. Panggil fungsi Provider (Ada validasi saldo di dalamnya)
+                final error = prov.addToCart(
+                  productId: selectedProductId,
+                  namaProduk: produkController.text,
+                  ukuran: ukuranController.text,
+                  qty: qty,
+                  unitPrice: unitPrice,
+                  subtotal: int.tryParse(hargaController.text) ?? 0,
+                  isRedemption: useRedemption,
+                  isCouponEnabled: isCouponEnabled,
+                  kuponAwal: useRedemption ? 0 : start,
+                  kuponAkhir: useRedemption ? 0 : (start + qty - 1),
+                  currentCustomerBalance: currentCustomerCouponBalance,
+                );
+
+                if (error != null) {
+                  // Tampilkan jika saldo tidak cukup (Validasi Poin 3)
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error), backgroundColor: Colors.red));
+                } else {
+                  // Jika sukses masuk keranjang, reset input area
+                  setState(() {
+                    int lastUsed = useRedemption ? start : (start + qty);
+                    useRedemption = false;
+                    qtyController.text = "1";
+                    kuponAwalController.text = lastUsed.toString();
+                    updateSubtotal();
+                  });
+                }
+              },
+              icon: const Icon(Icons.add_shopping_cart),
+              label: const Text("TAMBAH KE DAFTAR"),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCartList(TransactionProvider prov) {
+    if (prov.cartItems.isEmpty) return const Center(child: Text("Belum ada barang", style: TextStyle(color: Colors.grey)));
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: prov.cartItems.length,
+      itemBuilder: (ctx, index) {
+        final item = prov.cartItems[index];
+        bool isFree = item['isRedemption'];
+        return Card(
+          color: isFree ? Colors.green.shade50 : Colors.white,
+          child: ListTile(
+            leading: Icon(isFree ? Icons.redeem : Icons.shopping_bag, color: isFree ? Colors.green : Colors.blue),
+            title: Text("${item['namaProduk']} (${item['qty']}x)"),
+            subtitle: Text(isFree ? "GRATIS (Tukar ${item['qty'] * 10} Kupon)" : "Rp ${item['subtotal']} | Kupon: ${item['kuponAwal']}-${item['kuponAkhir']}"),
+            trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => prov.removeFromCart(index)),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFooter(TransactionProvider prov) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)]),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("Total Bayar:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text("Rp ${prov.totalHarga}", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green)),
+              ],
+            ),
+            const SizedBox(height: 15),
+            SizedBox(
+              width: double.infinity,
+              height: 55,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                onPressed: prov.cartItems.isEmpty ? null : () async {
+                  final success = await prov.checkout(
+                    customerId: selectedCustomerId,
+                    namaPelanggan: pelangganController.text,
+                  );
+                  if (success && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Transaksi Berhasil Disimpan")));
+                    Navigator.pop(context);
+                  }
+                },
+                child: const Text("PROSES TRANSAKSI", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

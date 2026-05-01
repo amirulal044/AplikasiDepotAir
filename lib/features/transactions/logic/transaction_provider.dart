@@ -7,33 +7,21 @@ class TransactionProvider extends ChangeNotifier {
   final _supabase = Supabase.instance.client;
 
   bool isLoading = false;
-  int lastCouponNumber = 0;
 
-  // Data Master untuk Rekomendasi
+  // Master data
   List<Map<String, dynamic>> masterProducts = [];
   List<Map<String, dynamic>> masterCustomers = [];
   List<Map<String, dynamic>> transactions = [];
 
-  // Ambil Riwayat Transaksi
-  Future<void> fetchTransactions() async {
-    isLoading = true;
-    notifyListeners();
-    try {
-      final response = await _supabase
-          .from('transactions')
-          .select()
-          .order('created_at', ascending: false);
+  // --- KERANJANG BELANJA ---
+  List<Map<String, dynamic>> cartItems = [];
 
-      transactions = List<Map<String, dynamic>>.from(response);
-    } catch (e) {
-      print("Error fetch transactions: $e");
-    } finally {
-      isLoading = false;
-      notifyListeners();
-    }
+  // Hitung Total Harga dari semua item di keranjang
+  int get totalHarga {
+    return cartItems.fold(0, (sum, item) => sum + (item['subtotal'] as int));
   }
 
-  // Ambil data awal (Produk, Pelanggan, dan Nomor Kupon Terakhir)
+  // Inisialisasi Form
   Future<void> initForm() async {
     isLoading = true;
     notifyListeners();
@@ -43,14 +31,8 @@ class TransactionProvider extends ChangeNotifier {
 
       final custRes = await _supabase.from('customers').select();
       masterCustomers = List<Map<String, dynamic>>.from(custRes);
-
-      final userId = _supabase.auth.currentUser!.id;
-      final profileRes = await _supabase
-          .from('profiles')
-          .select('last_coupon_number')
-          .eq('id', userId)
-          .single();
-      lastCouponNumber = profileRes['last_coupon_number'] ?? 0;
+      
+      cartItems = []; 
     } catch (e) {
       print("Error init form: $e");
     } finally {
@@ -59,37 +41,77 @@ class TransactionProvider extends ChangeNotifier {
     }
   }
 
-  // PENYESUAIAN PADA FUNGSI CHECKOUT
-  Future<bool> checkout({
-    String? customerId,
-    String? productId,
-    required String namaPelanggan,
+  // --- PENYESUAIAN FUNGSI 1: Tambah ke Keranjang (Dengan Validasi) ---
+  String? addToCart({
+    required String? productId,
     required String namaProduk,
     required String ukuran,
-    required int nomorKupon,
-    required int qty, // <--- TAMBAHKAN PARAMETER QTY DI SINI
+    required int qty,
+    required int unitPrice,
+    required int subtotal,
     required bool isRedemption,
-    required int totalHarga,
+    required bool isCouponEnabled,
+    required int kuponAwal,
+    required int kuponAkhir,
+    required int currentCustomerBalance, // Tambahan parameter untuk validasi
+  }) {
+    
+    // 1. VALIDASI SALDO KUPON (Hanya jika isRedemption == true)
+    if (isRedemption) {
+      int kuponDibutuhkan = qty * 10;
+      if (currentCustomerBalance < kuponDibutuhkan) {
+        return "Saldo tidak cukup! Butuh $kuponDibutuhkan kupon untuk $qty galon gratis.";
+      }
+    }
+
+    // 2. LOGIKA KUPON FISIK
+    // Jika barang GRATIS, nomor kupon dipaksa 0
+    int finalKuponAwal = isRedemption ? 0 : kuponAwal;
+    int finalKuponAkhir = isRedemption ? 0 : kuponAkhir;
+
+    // 3. MASUKKAN KE DAFTAR
+    cartItems.add({
+      'productId': productId,
+      'namaProduk': namaProduk,
+      'ukuran': ukuran,
+      'qty': qty,
+      'unitPrice': unitPrice,
+      'subtotal': subtotal,
+      'isRedemption': isRedemption,
+      'isCouponEnabled': isCouponEnabled,
+      'kuponAwal': finalKuponAwal,
+      'kuponAkhir': finalKuponAkhir,
+    });
+    
+    notifyListeners(); 
+    return null; // Mengembalikan null berarti sukses
+  }
+
+  // FUNGSI 2: Hapus dari Keranjang
+  void removeFromCart(int index) {
+    cartItems.removeAt(index);
+    notifyListeners();
+  }
+
+  // FUNGSI 3: Checkout
+  Future<bool> checkout({
+    required String? customerId,
+    required String namaPelanggan,
   }) async {
+    if (cartItems.isEmpty) return false;
+
     isLoading = true;
     notifyListeners();
     try {
-      // Panggil Repo dengan parameter qty yang baru
-      await _repo.saveTransaction(
+      await _repo.saveCompleteTransaction(
         customerId: customerId,
-        productId: productId,
         namaPelanggan: namaPelanggan,
-        namaProduk: namaProduk,
-        ukuran: ukuran,
-        nomorKupon: nomorKupon,
-        qty: qty, // <--- TERUSKAN KE REPOSITORY
-        isRedemption: isRedemption,
         totalHarga: totalHarga,
+        items: cartItems,
       );
-
-      // Setelah sukses simpan, ambil data transaksi terbaru
-      await fetchTransactions();
-
+      
+      cartItems = []; 
+      await fetchTransactions(); 
       return true;
     } catch (e) {
       print("Checkout Error: $e");
@@ -100,14 +122,24 @@ class TransactionProvider extends ChangeNotifier {
     }
   }
 
-  // Refresh list pelanggan saja (Dipakai setelah Quick Add Pelanggan)
-  Future<void> refreshCustomerList() async {
+  // Riwayat Transaksi
+  Future<void> fetchTransactions() async {
     try {
-      final custRes = await _supabase.from('customers').select();
-      masterCustomers = List<Map<String, dynamic>>.from(custRes);
+      final response = await _supabase
+          .from('transactions')
+          .select()
+          .order('created_at', ascending: false);
+      transactions = List<Map<String, dynamic>>.from(response);
       notifyListeners();
     } catch (e) {
-      print("Refresh Customer Error: $e");
+      print("Error fetch: $e");
     }
+  }
+
+  // Refresh data pelanggan
+  Future<void> refreshCustomerList() async {
+    final custRes = await _supabase.from('customers').select();
+    masterCustomers = List<Map<String, dynamic>>.from(custRes);
+    notifyListeners();
   }
 }
