@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../logic/product_provider.dart';
 
 class ProductFormScreen extends StatefulWidget {
-  final Map<String, dynamic>? product; // Tambahkan parameter ini
+  final Map<String, dynamic>? product;
 
   const ProductFormScreen({Key? key, this.product}) : super(key: key);
 
@@ -17,26 +17,27 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   late TextEditingController ukuranController;
   late TextEditingController kuponController;
   late bool isCouponEnabled;
+  late bool isRedemptionItem; // <--- State baru
 
   final List<String> rekomendasiUkuran = ['19L', '15L', '12.5L', '10L'];
 
   @override
   void initState() {
     super.initState();
-    // Inisialisasi data: Jika edit, ambil dari widget.product. Jika tambah, kosongkan.
-    nameController = TextEditingController(
-      text: widget.product?['nama_produk'] ?? '',
-    );
+    final p = widget.product;
+    nameController = TextEditingController(text: p?['nama_produk'] ?? '');
     priceController = TextEditingController(
-      text: widget.product?['harga']?.toString() ?? '',
+      text: p?['harga']?.toString() ?? '',
     );
-    ukuranController = TextEditingController(
-      text: widget.product?['ukuran'] ?? '19L',
-    );
+    ukuranController = TextEditingController(text: p?['ukuran'] ?? '19L');
     kuponController = TextEditingController(
-      text: widget.product?['last_coupon_number']?.toString() ?? '0',
+      text: p?['last_coupon_number']?.toString() ?? '0',
     );
-    isCouponEnabled = widget.product?['is_coupon_enabled'] ?? true;
+
+    // Inisialisasi status awal
+    isRedemptionItem = p?['is_redemption_item'] ?? false;
+    isCouponEnabled =
+        p?['is_coupon_enabled'] ?? (isRedemptionItem ? false : true);
   }
 
   @override
@@ -59,6 +60,48 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 ),
               ),
               const SizedBox(height: 20),
+
+              // --- SEKSI REDEMPTION (POIN 3) ---
+              Container(
+                decoration: BoxDecoration(
+                  color: isRedemptionItem
+                      ? Colors.orange.shade50
+                      : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isRedemptionItem
+                        ? Colors.orange
+                        : Colors.grey.shade300,
+                  ),
+                ),
+                child: SwitchListTile(
+                  title: const Text(
+                    "Produk Hadiah (Tukar Kupon)?",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text(
+                    "Jika aktif, harga akan otomatis Rp 0 dan tidak menambah saldo kupon",
+                  ),
+                  value: isRedemptionItem,
+                  activeColor: Colors.orange,
+                  onChanged: (val) {
+                    setState(() {
+                      isRedemptionItem = val;
+                      if (val) {
+                        // Jika produk hadiah: Paksa harga 0 & matikan kupon fisik
+                        priceController.text = "0";
+                        isCouponEnabled = false;
+                      } else {
+                        // Jika kembali ke normal, aktifkan fitur kupon fisik jika 19L
+                        if (ukuranController.text.toUpperCase() == '19L')
+                          isCouponEnabled = true;
+                      }
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(height: 20),
+
               const Text(
                 "Ukuran Galon / Botol",
                 style: TextStyle(fontWeight: FontWeight.bold),
@@ -72,7 +115,10 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 ),
                 onChanged: (val) {
                   setState(() {
-                    isCouponEnabled = (val.toUpperCase() == '19L');
+                    // Otomatis aktifkan kupon jika 19L DAN bukan produk hadiah
+                    if (!isRedemptionItem) {
+                      isCouponEnabled = (val.toUpperCase() == '19L');
+                    }
                   });
                 },
               ),
@@ -85,7 +131,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                     onPressed: () {
                       setState(() {
                         ukuranController.text = ukuran;
-                        isCouponEnabled = (ukuran == '19L');
+                        if (!isRedemptionItem)
+                          isCouponEnabled = (ukuran == '19L');
                       });
                     },
                     backgroundColor: ukuranController.text == ukuran
@@ -95,44 +142,51 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 }).toList(),
               ),
               const SizedBox(height: 20),
+
               TextField(
                 controller: priceController,
-                decoration: const InputDecoration(
+                enabled:
+                    !isRedemptionItem, // Harga tidak bisa diedit jika produk hadiah
+                decoration: InputDecoration(
                   labelText: "Harga",
                   prefixText: "Rp ",
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
+                  fillColor: isRedemptionItem ? Colors.grey.shade200 : null,
+                  filled: isRedemptionItem,
                 ),
                 keyboardType: TextInputType.number,
               ),
               const SizedBox(height: 15),
-              SwitchListTile(
-                title: const Text("Aktifkan Sistem Kupon"),
-                value: isCouponEnabled,
-                onChanged: (val) {
-                  setState(() => isCouponEnabled = val);
-                },
-              ),
-              if (isCouponEnabled) ...[
-                const SizedBox(height: 15),
-                TextField(
-                  controller: kuponController,
-                  decoration: const InputDecoration(
-                    labelText: "Nomor Kupon Terakhir (Sekarang)",
-                    hintText: "Contoh: 100",
-                    helperText:
-                        "Nomor ini akan bertambah otomatis saat transaksi",
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.number,
+
+              // --- FITUR KUPON FISIK ---
+              if (!isRedemptionItem) ...[
+                SwitchListTile(
+                  title: const Text("Gunakan Penomoran Kupon Fisik"),
+                  value: isCouponEnabled,
+                  onChanged: (val) => setState(() => isCouponEnabled = val),
                 ),
+                if (isCouponEnabled)
+                  TextField(
+                    controller: kuponController,
+                    decoration: const InputDecoration(
+                      labelText: "Nomor Kupon Terakhir Saat Ini",
+                      border: OutlineInputBorder(),
+                      helperText:
+                          "Misal isi 100, maka transaksi berikutnya mulai 101",
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
               ],
+
               const SizedBox(height: 30),
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
+                    backgroundColor: isRedemptionItem
+                        ? Colors.orange
+                        : Colors.blue,
                     foregroundColor: Colors.white,
                   ),
                   onPressed: () async {
@@ -146,11 +200,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                       return;
                     }
 
-                    // Kita gunakan tipe 'dynamic' karena:
-                    // editProduct mengembalikan bool
-                    // saveProduct mengembalikan Map?
                     dynamic result;
-
                     if (isEdit) {
                       result = await context
                           .read<ProductProvider>()
@@ -160,8 +210,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                             ukuranController.text,
                             priceController.text,
                             isCouponEnabled,
-                            int.tryParse(kuponController.text) ??
-                                0, // <--- Kirim data kupon
+                            int.tryParse(kuponController.text) ?? 0,
+                            isRedemptionItem, // <--- Kirim parameter baru
                           );
                     } else {
                       result = await context
@@ -171,18 +221,14 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                             ukuranController.text,
                             priceController.text,
                             isCouponEnabled,
-                            int.tryParse(kuponController.text) ??
-                                0, // <--- Kirim data kupon
+                            int.tryParse(kuponController.text) ?? 0,
+                            isRedemptionItem, // <--- Kirim parameter baru
                           );
                     }
 
-                    // Logika pengecekan sukses:
-                    // Jika Edit: result harus true
-                    // Jika Tambah Baru: result tidak boleh null
                     bool isSuccess = isEdit
                         ? (result == true)
                         : (result != null);
-
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -197,7 +243,10 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                       if (isSuccess) Navigator.pop(context);
                     }
                   },
-                  child: Text(isEdit ? "PERBARUI PRODUK" : "SIMPAN PRODUK"),
+                  child: Text(
+                    isEdit ? "PERBARUI PRODUK" : "SIMPAN PRODUK",
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             ],

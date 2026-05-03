@@ -13,8 +13,6 @@ class ProductProvider extends ChangeNotifier {
       products = await _repo.getProducts();
     } catch (e) {
       print("Error fetch: $e");
-      // Kita tidak tampilkan snackbar di sini agar tidak mengganggu UI utama,
-      // cukup list kosong atau error widget di UI.
     } finally {
       isLoading = false;
       notifyListeners();
@@ -26,7 +24,8 @@ class ProductProvider extends ChangeNotifier {
     String ukuran,
     String harga,
     bool isCoupon,
-    int lastCoupon, // <--- Tambahan
+    int lastCoupon,
+    bool isRedemption, // <--- Tambahan
   ) async {
     try {
       final newProd = await _repo.addProduct(
@@ -34,7 +33,8 @@ class ProductProvider extends ChangeNotifier {
         ukuran,
         int.parse(harga),
         isCoupon,
-        lastCoupon, // <--- Teruskan ke repo
+        lastCoupon,
+        isRedemption,
       );
       await fetchProducts();
       return newProd;
@@ -49,7 +49,8 @@ class ProductProvider extends ChangeNotifier {
     String ukuran,
     String harga,
     bool isCoupon,
-    int lastCoupon, // <--- Tambahan
+    int lastCoupon,
+    bool isRedemption, // <--- Tambahan
   ) async {
     try {
       await _repo.updateProduct(
@@ -58,16 +59,17 @@ class ProductProvider extends ChangeNotifier {
         ukuran,
         int.parse(harga),
         isCoupon,
-        lastCoupon, // <--- Teruskan
+        lastCoupon,
+        isRedemption,
       );
       await fetchProducts();
       return true;
     } catch (e) {
+      print("Error edit: $e");
       return false;
     }
   }
 
-  // Ubah menjadi mengembalikan Future<bool>
   Future<bool> removeProduct(String id) async {
     try {
       await _repo.deleteProduct(id);

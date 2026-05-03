@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class ProductRepository {
   final _supabase = Supabase.instance.client;
 
-  // Ambil semua produk milik user yang sedang login
   Future<List<Map<String, dynamic>>> getProducts() async {
     return await _supabase
         .from('products')
@@ -11,13 +10,13 @@ class ProductRepository {
         .order('created_at', ascending: false);
   }
 
-  // Tambah Produk
   Future<Map<String, dynamic>> addProduct(
     String nama,
     String ukuran,
     int harga,
     bool isCoupon,
-    int lastCoupon, // <--- Tambahan
+    int lastCoupon,
+    bool isRedemption, // <--- Parameter baru
   ) async {
     return await _supabase
         .from('products')
@@ -27,20 +26,21 @@ class ProductRepository {
           'ukuran': ukuran,
           'harga': harga,
           'is_coupon_enabled': isCoupon,
-          'last_coupon_number': lastCoupon, // <--- Simpan ke DB
+          'last_coupon_number': lastCoupon,
+          'is_redemption_item': isRedemption, // <--- Simpan ke DB
         })
         .select()
         .single();
   }
 
-  // Edit Produk
   Future<void> updateProduct(
     String id,
     String nama,
     String ukuran,
     int harga,
     bool isCoupon,
-    int lastCoupon, // <--- Tambahan
+    int lastCoupon,
+    bool isRedemption, // <--- Parameter baru
   ) async {
     await _supabase
         .from('products')
@@ -49,12 +49,12 @@ class ProductRepository {
           'ukuran': ukuran,
           'harga': harga,
           'is_coupon_enabled': isCoupon,
-          'last_coupon_number': lastCoupon, // <--- Update di DB
+          'last_coupon_number': lastCoupon,
+          'is_redemption_item': isRedemption, // <--- Update di DB
         })
         .eq('id', id);
   }
 
-  // Hapus Produk
   Future<void> deleteProduct(String id) async {
     await _supabase.from('products').delete().eq('id', id);
   }

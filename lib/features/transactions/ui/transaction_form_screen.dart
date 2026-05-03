@@ -5,8 +5,10 @@ import '../../customers/logic/customer_provider.dart';
 import '../../products/logic/product_provider.dart';
 
 class TransactionFormScreen extends StatefulWidget {
+  const TransactionFormScreen({Key? key}) : super(key: key);
+
   @override
-  _TransactionFormScreenState createState() => _TransactionFormScreenState();
+  State<TransactionFormScreen> createState() => _TransactionFormScreenState();
 }
 
 class _TransactionFormScreenState extends State<TransactionFormScreen> {
@@ -24,12 +26,12 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   int unitPrice = 0;
   int currentCustomerCouponBalance = 0;
   bool isCouponEnabled = false;
-  bool useRedemption = false;
+  bool isRedemptionProduct = false; // Deteksi apakah produk ini tipe hadiah
 
   // Helper untuk hitung rentang kupon otomatis
   String get couponRangeDisplay {
     int start = int.tryParse(kuponAwalController.text) ?? 0;
-    int qty = int.tryParse(qtyController.text) ?? 1;
+    int qty = int.tryParse(qtyController.text) ?? 0;
     if (qty <= 1) return start.toString();
     return "$start - ${start + qty - 1}";
   }
@@ -42,21 +44,24 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     });
   }
 
-  // --- LOGIKA PERHITUNGAN HARGA (Poin 3: Bayar vs Tukar) ---
+  // --- LOGIKA PERHITUNGAN HARGA (Poin B) ---
   void updateSubtotal() {
-  // Jika kosong, anggap 0 sementara agar tidak error saat perhitungan
-  int qty = int.tryParse(qtyController.text) ?? 0; 
-  
-  if (useRedemption) {
-    hargaController.text = "0";
-  } else {
-    hargaController.text = (unitPrice * qty).toString();
+    int qty = int.tryParse(qtyController.text) ?? 0;
+    if (isRedemptionProduct) {
+      hargaController.text = "0"; // Jika produk hadiah, harga mati di Rp 0
+    } else {
+      hargaController.text = (unitPrice * qty).toString();
+    }
   }
-}
 
   @override
   Widget build(BuildContext context) {
     final prov = context.watch<TransactionProvider>();
+
+    // Hitung Proyeksi Saldo Secara Real-time
+    int projectedBalance = prov.calculateProjectedBalance(
+      currentCustomerCouponBalance,
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text("Nota Transaksi Baru")),
@@ -70,12 +75,17 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildPelangganSection(prov),
+                        _buildPelangganSection(prov, projectedBalance),
                         const Divider(height: 30),
                         _buildProductInputSection(prov),
                         const SizedBox(height: 20),
-                        const Text("Daftar Belanjaan:", 
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const Text(
+                          "Daftar Belanjaan:",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
                         const SizedBox(height: 10),
                         _buildCartList(prov),
                       ],
@@ -88,8 +98,11 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     );
   }
 
-  // --- 1. SEKSI PELANGGAN (HYBRID) ---
-  Widget _buildPelangganSection(TransactionProvider prov) {
+  // --- 1. SEKSI PELANGGAN (DENGAN PROYEKSI SALDO) ---
+  Widget _buildPelangganSection(
+    TransactionProvider prov,
+    int projectedBalance,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -101,46 +114,93 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               child: Autocomplete<Map<String, dynamic>>(
                 displayStringForOption: (option) => option['nama'],
                 optionsBuilder: (textEditingValue) {
-                  return prov.masterCustomers.where((c) => 
-                      c['nama'].toLowerCase().contains(textEditingValue.text.toLowerCase()));
+                  return prov.masterCustomers.where(
+                    (c) => c['nama'].toLowerCase().contains(
+                      textEditingValue.text.toLowerCase(),
+                    ),
+                  );
                 },
                 onSelected: (selection) {
                   setState(() {
                     selectedCustomerId = selection['id'];
                     pelangganController.text = selection['nama'];
-                    currentCustomerCouponBalance = selection['coupon_balance'] ?? 0;
+                    currentCustomerCouponBalance =
+                        selection['coupon_balance'] ?? 0;
                   });
                 },
                 fieldViewBuilder: (ctx, ctrl, focus, onSubmit) {
                   return TextField(
                     controller: ctrl..text = pelangganController.text,
                     focusNode: focus,
-                    decoration: const InputDecoration(hintText: "Cari/Ketik Pelanggan", border: OutlineInputBorder()),
+                    decoration: const InputDecoration(
+                      hintText: "Cari/Ketik Pelanggan",
+                      border: OutlineInputBorder(),
+                    ),
                     onChanged: (val) {
                       pelangganController.text = val;
-                      if(selectedCustomerId != null) setState(() {
-                        selectedCustomerId = null;
-                        currentCustomerCouponBalance = 0;
-                      });
+                      if (selectedCustomerId != null)
+                        setState(() {
+                          selectedCustomerId = null;
+                          currentCustomerCouponBalance = 0;
+                        });
                     },
                   );
                 },
               ),
             ),
             const SizedBox(width: 8),
-            IconButton(icon: const Icon(Icons.person_add, color: Colors.blue), 
-              onPressed: () => _showAddCustomerSheet(context)),
+            IconButton(
+              icon: const Icon(Icons.person_add, color: Colors.blue),
+              onPressed: () => _showAddCustomerSheet(context),
+            ),
           ],
         ),
         if (selectedCustomerId != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8.0),
+          Container(
+            margin: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: projectedBalance < 0
+                  ? Colors.red.shade50
+                  : Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(
+                20,
+              ), // Bentuk kapsul agar lebih modern
+              border: Border.all(
+                color: projectedBalance < 0
+                    ? Colors.red.shade200
+                    : Colors.blue.shade200,
+              ),
+            ),
             child: Row(
+              mainAxisSize:
+                  MainAxisSize.min, // Agar lebar kotak mengikuti panjang teks
               children: [
-                const Icon(Icons.confirmation_number, size: 16, color: Colors.blue),
-                const SizedBox(width: 5),
-                Text("Saldo Kupon: $currentCustomerCouponBalance | ", style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
-                Text("Maks Gratis: ${currentCustomerCouponBalance ~/ 10} Galon", style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                Icon(
+                  projectedBalance < 0
+                      ? Icons.warning_amber_rounded
+                      : Icons.confirmation_number_outlined,
+                  size: 18,
+                  color: projectedBalance < 0 ? Colors.red : Colors.blue,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  "Kupon 19L terkumpul: ",
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: projectedBalance < 0
+                        ? Colors.red.shade900
+                        : Colors.blue.shade900,
+                  ),
+                ),
+                Text(
+                  "$projectedBalance",
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: projectedBalance < 0 ? Colors.red : Colors.blue,
+                  ),
+                ),
               ],
             ),
           ),
@@ -148,115 +208,171 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     );
   }
 
-  // --- 2. SEKSI INPUT PRODUK (HYBRID + FLEXIBLE REDEMPTION) ---
+  // --- 2. SEKSI INPUT PRODUK (AUTO-RESPONSE UI) ---
   Widget _buildProductInputSection(TransactionProvider prov) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300)),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Input Produk", style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text(
+            "Input Produk",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 8),
-          
-          // Hybrid Product Dropdown/Autocomplete (Menggunakan dropdown untuk kemudahan)
+
           Row(
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
                   value: selectedProductId,
                   isExpanded: true,
-                  decoration: const InputDecoration(hintText: "Pilih Produk", border: OutlineInputBorder(), fillColor: Colors.white, filled: true),
-                  items: prov.masterProducts.map((p) => DropdownMenuItem(
-                    value: p['id'].toString(), 
-                    child: Text("${p['nama_produk']} (${p['ukuran']})"))).toList(),
+                  decoration: const InputDecoration(
+                    hintText: "Pilih Produk",
+                    border: OutlineInputBorder(),
+                    fillColor: Colors.white,
+                    filled: true,
+                  ),
+                  items: prov.masterProducts
+                      .map(
+                        (p) => DropdownMenuItem(
+                          value: p['id'].toString(),
+                          child: Text("${p['nama_produk']} (${p['ukuran']})"),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (val) {
-                    final p = prov.masterProducts.firstWhere((item) => item['id'] == val);
+                    final p = prov.masterProducts.firstWhere(
+                      (item) => item['id'] == val,
+                    );
                     setState(() {
                       selectedProductId = val;
                       produkController.text = p['nama_produk'];
                       ukuranController.text = p['ukuran'];
                       unitPrice = p['harga'];
-                      isCouponEnabled = (p['ukuran'] == '19L');
-                      kuponAwalController.text = ((p['last_coupon_number'] ?? 0) + 1).toString();
+
+                      // LOGIKA OTOMATIS: Deteksi Produk Hadiah atau Bayar
+                      isRedemptionProduct = p['is_redemption_item'] ?? false;
+                      isCouponEnabled =
+                          (p['ukuran'] == '19L' ||
+                          p['is_coupon_enabled'] == true);
+
+                      int lastKupon = p['last_coupon_number'] ?? 0;
+                      kuponAwalController.text = (lastKupon + 1).toString();
                       updateSubtotal();
                     });
                   },
                 ),
               ),
               const SizedBox(width: 8),
-              IconButton(icon: const Icon(Icons.add_box, color: Colors.blue), 
-                onPressed: () => _showAddProductSheet(context)),
+              IconButton(
+                icon: const Icon(Icons.add_box, color: Colors.blue),
+                onPressed: () => _showAddProductSheet(context),
+              ),
             ],
           ),
-          
+
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: TextField(
-                controller: qtyController, 
-                decoration: const InputDecoration(labelText: "QTY", border: OutlineInputBorder(), fillColor: Colors.white, filled: true),
-                keyboardType: TextInputType.number,
-                onChanged: (val) => setState(() => updateSubtotal()),
-              )),
+              Expanded(
+                child: TextField(
+                  controller: qtyController,
+                  decoration: const InputDecoration(
+                    labelText: "QTY",
+                    border: OutlineInputBorder(),
+                    fillColor: Colors.white,
+                    filled: true,
+                  ),
+                  keyboardType: TextInputType.number,
+                  onChanged: (val) => setState(() => updateSubtotal()),
+                ),
+              ),
               const SizedBox(width: 10),
-              Expanded(child: TextField(
-                controller: ukuranController, 
-                decoration: const InputDecoration(labelText: "Ukuran", border: OutlineInputBorder(), fillColor: Colors.white, filled: true),
-                onChanged: (val) => setState(() => isCouponEnabled = (val.toUpperCase() == '19L')),
-              )),
+              Expanded(
+                child: TextField(
+                  controller: ukuranController,
+                  decoration: const InputDecoration(
+                    labelText: "Ukuran",
+                    border: OutlineInputBorder(),
+                    fillColor: Colors.white,
+                    filled: true,
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),
           TextField(
-            controller: hargaController, 
-            decoration: const InputDecoration(labelText: "Total Baris Ini", border: OutlineInputBorder(), prefixText: "Rp ", fillColor: Colors.white, filled: true),
+            controller: hargaController,
+            readOnly:
+                isRedemptionProduct, // Poin B: Harga mati 0 jika produk hadiah
+            decoration: InputDecoration(
+              labelText: "Subtotal Baris Ini",
+              prefixText: "Rp ",
+              fillColor: isRedemptionProduct
+                  ? Colors.grey.shade200
+                  : Colors.white,
+              filled: true,
+              border: const OutlineInputBorder(),
+            ),
             keyboardType: TextInputType.number,
           ),
-          
-          // --- LOGIKA KUPON (Poin 3: Bayar vs Tukar) ---
-          if (isCouponEnabled) ...[
+
+          // --- SEKSI KUPON FISIK (POIN B: HILANG JIKA HADIAH) ---
+          if (isCouponEnabled && !isRedemptionProduct) ...[
             const SizedBox(height: 10),
-            // Switch Tukar Kupon Fleksibel
-            if (currentCustomerCouponBalance >= 10)
-              SwitchListTile(
-  contentPadding: EdgeInsets.zero,
-  title: Text(
-    "Tukar Kupon (Gratis ${qtyController.text.isEmpty ? '0' : qtyController.text} Galon)", 
-    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green)
-  ),
-  subtitle: Text(
-    "Butuh ${(int.tryParse(qtyController.text) ?? 0) * 10} Kupon" // <--- Gunakan ?? 0, hapus tanda !
-  ),
-  value: useRedemption,
-  onChanged: (val) {
-    setState(() {
-      useRedemption = val;
-      updateSubtotal();
-    });
-  },
-),
-            
-            // Input Kupon HANYA MUNCUL jika Berbayar
-            if (!useRedemption)
-              Row(
-                children: [
-                  Expanded(child: TextField(
-                    controller: kuponAwalController, 
-                    decoration: const InputDecoration(labelText: "No. Kupon Awal", border: OutlineInputBorder(), fillColor: Colors.white, filled: true),
+            const Text(
+              "Penomoran Kupon Fisik",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+                color: Colors.blue,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: kuponAwalController,
+                    decoration: const InputDecoration(
+                      labelText: "No. Kupon Awal",
+                      border: OutlineInputBorder(),
+                      fillColor: Colors.white,
+                      filled: true,
+                    ),
                     keyboardType: TextInputType.number,
                     onChanged: (val) => setState(() {}),
-                  )),
-                  const SizedBox(width: 10),
-                  Expanded(child: Container(
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Container(
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(5)),
-                    child: Text("Rentang: $couponRangeDisplay", style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
-                  )),
-                ],
-              ),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Text(
+                      "Rentang: $couponRangeDisplay",
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
-          
+
           const SizedBox(height: 15),
           SizedBox(
             width: double.infinity,
@@ -264,20 +380,11 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
             child: ElevatedButton.icon(
               onPressed: () {
                 if (produkController.text.isEmpty) return;
-  
-  // Ambil nilai qty, jika gagal parse atau kosong, beri nilai 0
-  int qty = int.tryParse(qtyController.text) ?? 0;
-  
-  if (qty <= 0) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Jumlah (QTY) minimal 1"), backgroundColor: Colors.orange)
-    );
-    return;
-  }
+                int qty = int.tryParse(qtyController.text) ?? 0;
+                if (qty <= 0) return;
 
-  int start = int.tryParse(kuponAwalController.text) ?? 0;
+                int start = int.tryParse(kuponAwalController.text) ?? 0;
 
-                // 1. Panggil fungsi Provider (Ada validasi saldo di dalamnya)
                 final error = prov.addToCart(
                   productId: selectedProductId,
                   namaProduk: produkController.text,
@@ -285,21 +392,20 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                   qty: qty,
                   unitPrice: unitPrice,
                   subtotal: int.tryParse(hargaController.text) ?? 0,
-                  isRedemption: useRedemption,
+                  isRedemption: isRedemptionProduct, // Otomatis dari produk
                   isCouponEnabled: isCouponEnabled,
-                  kuponAwal: useRedemption ? 0 : start,
-                  kuponAkhir: useRedemption ? 0 : (start + qty - 1),
-                  currentCustomerBalance: currentCustomerCouponBalance,
+                  kuponAwal: isRedemptionProduct ? 0 : start,
+                  kuponAkhir: isRedemptionProduct ? 0 : (start + qty - 1),
+                  dbBalance: currentCustomerCouponBalance,
                 );
 
                 if (error != null) {
-                  // Tampilkan jika saldo tidak cukup (Validasi Poin 3)
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error), backgroundColor: Colors.red));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(error), backgroundColor: Colors.red),
+                  );
                 } else {
-                  // Jika sukses masuk keranjang, reset input area
                   setState(() {
-                    int lastUsed = useRedemption ? start : (start + qty);
-                    useRedemption = false;
+                    int lastUsed = isRedemptionProduct ? start : (start + qty);
                     qtyController.text = "1";
                     kuponAwalController.text = lastUsed.toString();
                     updateSubtotal();
@@ -308,16 +414,22 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               },
               icon: const Icon(Icons.add_shopping_cart),
               label: const Text("TAMBAH KE DAFTAR"),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
   Widget _buildCartList(TransactionProvider prov) {
-    if (prov.cartItems.isEmpty) return const Center(child: Text("Belum ada barang", style: TextStyle(color: Colors.grey)));
+    if (prov.cartItems.isEmpty)
+      return const Center(
+        child: Text("Daftar kosong", style: TextStyle(color: Colors.grey)),
+      );
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -328,10 +440,20 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
         return Card(
           color: isFree ? Colors.green.shade50 : Colors.white,
           child: ListTile(
-            leading: Icon(isFree ? Icons.redeem : Icons.shopping_bag, color: isFree ? Colors.green : Colors.blue),
+            leading: Icon(
+              isFree ? Icons.redeem : Icons.shopping_bag,
+              color: isFree ? Colors.green : Colors.blue,
+            ),
             title: Text("${item['namaProduk']} (${item['qty']}x)"),
-            subtitle: Text(isFree ? "GRATIS (Tukar ${item['qty'] * 10} Kupon)" : "Rp ${item['subtotal']} | Kupon: ${item['kuponAwal']}-${item['kuponAkhir']}"),
-            trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => prov.removeFromCart(index)),
+            subtitle: Text(
+              isFree
+                  ? "TUKAR KUPON (GRATIS)"
+                  : "Rp ${item['subtotal']} | Kupon: ${item['kuponAwal']}-${item['kuponAkhir']}",
+            ),
+            trailing: IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              onPressed: () => prov.removeFromCart(index),
+            ),
           ),
         );
       },
@@ -339,9 +461,17 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   }
 
   Widget _buildFooter(TransactionProvider prov) {
+    int finalProjected = prov.calculateProjectedBalance(
+      currentCustomerCouponBalance,
+    );
+    bool isInvalid = finalProjected < 0;
+
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)]),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
+      ),
       child: SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -349,8 +479,18 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text("Total Bayar:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                Text("Rp ${prov.totalHarga}", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green)),
+                const Text(
+                  "Total Bayar:",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  "Rp ${prov.totalHarga}",
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 15),
@@ -358,18 +498,31 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               width: double.infinity,
               height: 55,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                onPressed: prov.cartItems.isEmpty ? null : () async {
-                  final success = await prov.checkout(
-                    customerId: selectedCustomerId,
-                    namaPelanggan: pelangganController.text,
-                  );
-                  if (success && mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Transaksi Berhasil Disimpan")));
-                    Navigator.pop(context);
-                  }
-                },
-                child: const Text("PROSES TRANSAKSI", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isInvalid ? Colors.grey : Colors.green,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: (prov.cartItems.isEmpty || isInvalid)
+                    ? null
+                    : () async {
+                        final success = await prov.checkout(
+                          customerId: selectedCustomerId,
+                          namaPelanggan: pelangganController.text,
+                        );
+                        if (success && mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Transaksi Berhasil")),
+                          );
+                          Navigator.pop(context);
+                        }
+                      },
+                child: Text(
+                  isInvalid ? "SALDO TIDAK CUKUP" : "PROSES TRANSAKSI",
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ),
           ],
@@ -580,8 +733,8 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                           ukuranSheetController.text,
                           priceSheetController.text,
                           couponSheet,
-                          int.tryParse(kuponSheetController.text) ??
-                              0, // <--- Parameter baru
+                          int.tryParse(kuponSheetController.text) ?? 0,
+                          false,
                         );
 
                     if (newProd != null) {

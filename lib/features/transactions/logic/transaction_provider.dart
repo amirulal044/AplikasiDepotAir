@@ -21,6 +21,25 @@ class TransactionProvider extends ChangeNotifier {
     return cartItems.fold(0, (sum, item) => sum + (item['subtotal'] as int));
   }
 
+  // --- LOGIKA BARU: HITUNG PROYEKSI SALDO (LIVE BALANCE) ---
+  // Fungsi ini menghitung saldo pelanggan berdasarkan isi keranjang belanja saat ini
+  int calculateProjectedBalance(int dbBalance) {
+    int adjustment = 0;
+    for (var item in cartItems) {
+      // Hanya hitung jika fitur kupon aktif pada produk tersebut
+      if (item['isCouponEnabled'] == true) {
+        if (item['isRedemption'] == true) {
+          // Jika item di keranjang adalah GRATIS: Kurangi 10 per qty
+          adjustment -= (item['qty'] as int) * 10;
+        } else {
+          // Jika item di keranjang adalah BAYAR: Tambah 1 per qty
+          adjustment += (item['qty'] as int);
+        }
+      }
+    }
+    return dbBalance + adjustment;
+  }
+
   // Inisialisasi Form
   Future<void> initForm() async {
     isLoading = true;
@@ -31,8 +50,8 @@ class TransactionProvider extends ChangeNotifier {
 
       final custRes = await _supabase.from('customers').select();
       masterCustomers = List<Map<String, dynamic>>.from(custRes);
-      
-      cartItems = []; 
+
+      cartItems = [];
     } catch (e) {
       print("Error init form: $e");
     } finally {
@@ -41,7 +60,7 @@ class TransactionProvider extends ChangeNotifier {
     }
   }
 
-  // --- PENYESUAIAN FUNGSI 1: Tambah ke Keranjang (Dengan Validasi) ---
+  // --- PENYESUAIAN FUNGSI 1: Tambah ke Keranjang (Validasi Proyeksi) ---
   String? addToCart({
     required String? productId,
     required String namaProduk,
@@ -53,23 +72,25 @@ class TransactionProvider extends ChangeNotifier {
     required bool isCouponEnabled,
     required int kuponAwal,
     required int kuponAkhir,
-    required int currentCustomerBalance, // Tambahan parameter untuk validasi
+    required int dbBalance, // Saldo asli dari database pelanggan
   }) {
-    
-    // 1. VALIDASI SALDO KUPON (Hanya jika isRedemption == true)
-    if (isRedemption) {
-      int kuponDibutuhkan = qty * 10;
-      if (currentCustomerBalance < kuponDibutuhkan) {
-        return "Saldo tidak cukup! Butuh $kuponDibutuhkan kupon untuk $qty galon gratis.";
-      }
+    // 1. Hitung potensi saldo JIKA barang ini ditambahkan
+    int currentProjected = calculateProjectedBalance(dbBalance);
+    int itemAdjustment = 0;
+
+    if (isCouponEnabled) {
+      itemAdjustment = isRedemption ? -(qty * 10) : qty;
     }
 
-    // 2. LOGIKA KUPON FISIK
-    // Jika barang GRATIS, nomor kupon dipaksa 0
-    int finalKuponAwal = isRedemption ? 0 : kuponAwal;
-    int finalKuponAkhir = isRedemption ? 0 : kuponAkhir;
+    int finalPotentialBalance = currentProjected + itemAdjustment;
 
-    // 3. MASUKKAN KE DAFTAR
+    // 2. VALIDASI: Jika saldo akhir diproyeksikan MINUS, maka tolak
+    if (isRedemption && finalPotentialBalance < 0) {
+      int sisaKebutuhan = finalPotentialBalance.abs();
+      return "Saldo Kupon tidak cukup! Kurang $sisaKebutuhan kupon lagi untuk transaksi ini.";
+    }
+
+    // 3. MASUKKAN KE DAFTAR JIKA VALID
     cartItems.add({
       'productId': productId,
       'namaProduk': namaProduk,
@@ -79,12 +100,12 @@ class TransactionProvider extends ChangeNotifier {
       'subtotal': subtotal,
       'isRedemption': isRedemption,
       'isCouponEnabled': isCouponEnabled,
-      'kuponAwal': finalKuponAwal,
-      'kuponAkhir': finalKuponAkhir,
+      'kuponAwal': isRedemption ? 0 : kuponAwal,
+      'kuponAkhir': isRedemption ? 0 : kuponAkhir,
     });
-    
-    notifyListeners(); 
-    return null; // Mengembalikan null berarti sukses
+
+    notifyListeners();
+    return null; // Sukses
   }
 
   // FUNGSI 2: Hapus dari Keranjang
@@ -109,9 +130,9 @@ class TransactionProvider extends ChangeNotifier {
         totalHarga: totalHarga,
         items: cartItems,
       );
-      
-      cartItems = []; 
-      await fetchTransactions(); 
+
+      cartItems = [];
+      await fetchTransactions();
       return true;
     } catch (e) {
       print("Checkout Error: $e");
