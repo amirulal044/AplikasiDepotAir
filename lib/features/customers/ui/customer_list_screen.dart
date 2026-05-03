@@ -15,40 +15,68 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
     Future.microtask(() => context.read<CustomerProvider>().fetchCustomers());
   }
 
+  
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<CustomerProvider>();
     return Scaffold(
-      appBar: AppBar(title: const Text("Pelanggan")),
+      appBar: AppBar(title: const Text("Daftar Pelanggan")),
       body: provider.isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(
               itemCount: provider.customers.length,
+              padding: const EdgeInsets.all(10),
               itemBuilder: (context, index) {
                 final c = provider.customers[index];
-                return ListTile(
-                  leading: const CircleAvatar(child: Icon(Icons.person)),
-                  title: Text(c['nama']),
-                  subtitle: Text(
-                    "${c['telepon']}\nKupon: ${c['coupon_balance']}/10",
-                  ),
-                  isThreeLine: true,
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
+                
+                // Ambil data statistik dari JSONB
+                Map<String, dynamic> stats = c['total_stats'] ?? {};
+                
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: ExpansionTile( // Menggunakan ExpansionTile agar detail statistik bisa dibuka-tutup
+                    leading: const CircleAvatar(child: Icon(Icons.person)),
+                    title: Text(c['nama'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text("Kupon 19L: ${c['coupon_balance_19l']} | Telp: ${c['telepon']}"),
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.blue),
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => CustomerFormScreen(customer: c),
-                          ),
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Alamat: ${c['alamat'] ?? '-'}"),
+                            const Divider(),
+                            const Text("Total Pengisian Seumur Hidup:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                            const SizedBox(height: 8),
+                            // Menampilkan semua ukuran yang ada di JSON secara dinamis
+                            stats.isEmpty 
+                              ? const Text("Belum ada riwayat pengisian", style: TextStyle(fontSize: 12, color: Colors.grey))
+                              : Wrap(
+                                  spacing: 8,
+                                  children: stats.entries.map((e) => Chip(
+                                    label: Text("${e.key}: ${e.value}x", style: const TextStyle(fontSize: 11)),
+                                    backgroundColor: Colors.blue.shade50,
+                                  )).toList(),
+                                ),
+                            const SizedBox(height: 10),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton.icon(
+                                  icon: const Icon(Icons.edit, size: 18),
+                                  label: const Text("Edit"),
+                                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CustomerFormScreen(customer: c))),
+                                ),
+                                TextButton.icon(
+                                  icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                                  label: const Text("Hapus", style: TextStyle(color: Colors.red)),
+                                  onPressed: () => provider.removeCustomer(c['id']),
+                                ),
+                              ],
+                            )
+                          ],
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => provider.removeCustomer(c['id']),
-                      ),
+                      )
                     ],
                   ),
                 );

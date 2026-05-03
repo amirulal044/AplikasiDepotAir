@@ -144,19 +144,25 @@ class TransactionProvider extends ChangeNotifier {
   }
 
   // Riwayat Transaksi
-  Future<void> fetchTransactions() async {
-    try {
-      final response = await _supabase
-          .from('transactions')
-          .select()
-          .order('created_at', ascending: false);
-      transactions = List<Map<String, dynamic>>.from(response);
-      notifyListeners();
-    } catch (e) {
-      print("Error fetch: $e");
-    }
-  }
+ Future<void> fetchTransactions() async {
+  isLoading = true;
+  notifyListeners();
+  try {
+    // Query ini mengambil data dari tabel transactions 
+    // DAN sekaligus mengambil semua baris dari tabel transaction_items yang terkait
+    final response = await _supabase
+        .from('transactions')
+        .select('*, transaction_items(*)') 
+        .order('created_at', ascending: false);
 
+    transactions = List<Map<String, dynamic>>.from(response);
+  } catch (e) {
+    print("Error fetch transactions: $e");
+  } finally {
+    isLoading = false;
+    notifyListeners();
+  }
+}
   // Refresh data pelanggan
   Future<void> refreshCustomerList() async {
     final custRes = await _supabase.from('customers').select();

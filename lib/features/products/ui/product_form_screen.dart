@@ -56,68 +56,52 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 controller: nameController,
                 decoration: const InputDecoration(
                   labelText: "Nama Produk",
+                  hintText: "Contoh: Air Mineral",
                   border: OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 20),
-
               // --- SEKSI REDEMPTION (POIN 3) ---
               Container(
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: isRedemptionItem
-                      ? Colors.orange.shade50
-                      : Colors.grey.shade50,
+                  color: isRedemptionItem ? Colors.orange.shade50 : Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isRedemptionItem
-                        ? Colors.orange
-                        : Colors.grey.shade300,
-                  ),
+                  border: Border.all(color: isRedemptionItem ? Colors.orange : Colors.blue.shade200),
                 ),
                 child: SwitchListTile(
-                  title: const Text(
-                    "Produk Hadiah (Tukar Kupon)?",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: const Text(
-                    "Jika aktif, harga akan otomatis Rp 0 dan tidak menambah saldo kupon",
-                  ),
+                  title: const Text("Ini Produk Hadiah (Tukar Kupon)?"),
+                  subtitle: const Text("Jika ON: Harga Rp 0 & Memotong Saldo Kupon Pelanggan"),
                   value: isRedemptionItem,
                   activeColor: Colors.orange,
                   onChanged: (val) {
                     setState(() {
                       isRedemptionItem = val;
                       if (val) {
-                        // Jika produk hadiah: Paksa harga 0 & matikan kupon fisik
                         priceController.text = "0";
-                        isCouponEnabled = false;
+                        isCouponEnabled = false; // Hadiah tidak dapat kupon baru
                       } else {
-                        // Jika kembali ke normal, aktifkan fitur kupon fisik jika 19L
-                        if (ukuranController.text.toUpperCase() == '19L')
-                          isCouponEnabled = true;
+                        if (ukuranController.text.toUpperCase() == '19L') isCouponEnabled = true;
                       }
                     });
                   },
                 ),
               ),
               const SizedBox(height: 20),
-
-              const Text(
-                "Ukuran Galon / Botol",
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
+              const Text("Ukuran Galon", style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               TextField(
                 controller: ukuranController,
                 decoration: const InputDecoration(
+                  hintText: "Contoh: 19L atau 15L",
                   border: OutlineInputBorder(),
                   suffixIcon: Icon(Icons.straighten),
                 ),
                 onChanged: (val) {
                   setState(() {
-                    // Otomatis aktifkan kupon jika 19L DAN bukan produk hadiah
+                    // Hanya otomatis ON jika ukuran 19L dan BUKAN produk hadiah
                     if (!isRedemptionItem) {
-                      isCouponEnabled = (val.toUpperCase() == '19L');
+                      isCouponEnabled = (val.toUpperCase().trim() == '19L');
                     }
                   });
                 },
@@ -131,13 +115,10 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                     onPressed: () {
                       setState(() {
                         ukuranController.text = ukuran;
-                        if (!isRedemptionItem)
-                          isCouponEnabled = (ukuran == '19L');
+                        if (!isRedemptionItem) isCouponEnabled = (ukuran == '19L');
                       });
                     },
-                    backgroundColor: ukuranController.text == ukuran
-                        ? Colors.blue.shade100
-                        : null,
+                    backgroundColor: ukuranController.text == ukuran ? Colors.blue.shade100 : null,
                   );
                 }).toList(),
               ),
@@ -145,23 +126,23 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
               TextField(
                 controller: priceController,
-                enabled:
-                    !isRedemptionItem, // Harga tidak bisa diedit jika produk hadiah
+                enabled: !isRedemptionItem, // Kunci jika hadiah
                 decoration: InputDecoration(
-                  labelText: "Harga",
+                  labelText: "Harga Jual",
                   prefixText: "Rp ",
                   border: const OutlineInputBorder(),
-                  fillColor: isRedemptionItem ? Colors.grey.shade200 : null,
                   filled: isRedemptionItem,
+                  fillColor: isRedemptionItem ? Colors.grey.shade200 : null,
                 ),
                 keyboardType: TextInputType.number,
               ),
               const SizedBox(height: 15),
 
-              // --- FITUR KUPON FISIK ---
+              // --- FITUR KUPON FISIK (Hanya muncul jika berbayar) ---
               if (!isRedemptionItem) ...[
                 SwitchListTile(
                   title: const Text("Gunakan Penomoran Kupon Fisik"),
+                  subtitle: const Text("Hanya untuk galon berbayar (Poin)"),
                   value: isCouponEnabled,
                   onChanged: (val) => setState(() => isCouponEnabled = val),
                 ),
@@ -169,10 +150,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   TextField(
                     controller: kuponController,
                     decoration: const InputDecoration(
-                      labelText: "Nomor Kupon Terakhir Saat Ini",
+                      labelText: "Nomor Kupon Fisik Terakhir",
                       border: OutlineInputBorder(),
-                      helperText:
-                          "Misal isi 100, maka transaksi berikutnya mulai 101",
+                      helperText: "Input nomor terakhir di buku fisik Anda",
                     ),
                     keyboardType: TextInputType.number,
                   ),

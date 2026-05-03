@@ -16,18 +16,18 @@ class ProductRepository {
     int harga,
     bool isCoupon,
     int lastCoupon,
-    bool isRedemption, // <--- Parameter baru
+    bool isRedemption,
   ) async {
     return await _supabase
         .from('products')
         .insert({
           'user_id': _supabase.auth.currentUser!.id,
           'nama_produk': nama,
-          'ukuran': ukuran,
+          'ukuran': ukuran.toUpperCase().trim(), // STANDARISASI: Selalu Uppercase (19L)
           'harga': harga,
           'is_coupon_enabled': isCoupon,
           'last_coupon_number': lastCoupon,
-          'is_redemption_item': isRedemption, // <--- Simpan ke DB
+          'is_redemption_item': isRedemption,
         })
         .select()
         .single();
@@ -40,17 +40,17 @@ class ProductRepository {
     int harga,
     bool isCoupon,
     int lastCoupon,
-    bool isRedemption, // <--- Parameter baru
+    bool isRedemption,
   ) async {
     await _supabase
         .from('products')
         .update({
           'nama_produk': nama,
-          'ukuran': ukuran,
+          'ukuran': ukuran.toUpperCase().trim(), // STANDARISASI
           'harga': harga,
           'is_coupon_enabled': isCoupon,
           'last_coupon_number': lastCoupon,
-          'is_redemption_item': isRedemption, // <--- Update di DB
+          'is_redemption_item': isRedemption,
         })
         .eq('id', id);
   }

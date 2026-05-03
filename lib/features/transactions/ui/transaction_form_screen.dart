@@ -99,115 +99,147 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   }
 
   // --- 1. SEKSI PELANGGAN (DENGAN PROYEKSI SALDO) ---
-  Widget _buildPelangganSection(
-    TransactionProvider prov,
-    int projectedBalance,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text("Pelanggan", style: TextStyle(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: Autocomplete<Map<String, dynamic>>(
-                displayStringForOption: (option) => option['nama'],
-                optionsBuilder: (textEditingValue) {
-                  return prov.masterCustomers.where(
-                    (c) => c['nama'].toLowerCase().contains(
-                      textEditingValue.text.toLowerCase(),
-                    ),
-                  );
-                },
-                onSelected: (selection) {
-                  setState(() {
-                    selectedCustomerId = selection['id'];
-                    pelangganController.text = selection['nama'];
-                    currentCustomerCouponBalance =
-                        selection['coupon_balance'] ?? 0;
-                  });
-                },
-                fieldViewBuilder: (ctx, ctrl, focus, onSubmit) {
-                  return TextField(
-                    controller: ctrl..text = pelangganController.text,
-                    focusNode: focus,
-                    decoration: const InputDecoration(
-                      hintText: "Cari/Ketik Pelanggan",
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (val) {
-                      pelangganController.text = val;
-                      if (selectedCustomerId != null)
-                        setState(() {
-                          selectedCustomerId = null;
-                          currentCustomerCouponBalance = 0;
-                        });
-                    },
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.person_add, color: Colors.blue),
-              onPressed: () => _showAddCustomerSheet(context),
-            ),
-          ],
-        ),
-        if (selectedCustomerId != null)
-          Container(
-            margin: const EdgeInsets.only(top: 10),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: projectedBalance < 0
-                  ? Colors.red.shade50
-                  : Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(
-                20,
-              ), // Bentuk kapsul agar lebih modern
-              border: Border.all(
-                color: projectedBalance < 0
-                    ? Colors.red.shade200
-                    : Colors.blue.shade200,
-              ),
-            ),
-            child: Row(
-              mainAxisSize:
-                  MainAxisSize.min, // Agar lebar kotak mengikuti panjang teks
-              children: [
-                Icon(
-                  projectedBalance < 0
-                      ? Icons.warning_amber_rounded
-                      : Icons.confirmation_number_outlined,
-                  size: 18,
-                  color: projectedBalance < 0 ? Colors.red : Colors.blue,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  "Kupon 19L terkumpul: ",
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: projectedBalance < 0
-                        ? Colors.red.shade900
-                        : Colors.blue.shade900,
-                  ),
-                ),
-                Text(
-                  "$projectedBalance",
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: projectedBalance < 0 ? Colors.red : Colors.blue,
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
+Widget _buildPelangganSection(TransactionProvider prov, int projectedBalance) {
+  // 1. Cari data pelanggan yang sedang dipilih secara dinamis dari master data
+  Map<String, dynamic>? selectedCustData;
+  try {
+    if (selectedCustomerId != null) {
+      selectedCustData = prov.masterCustomers.firstWhere(
+        (c) => c['id'] == selectedCustomerId,
+      );
+    }
+  } catch (e) {
+    selectedCustData = null;
   }
 
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text("Pelanggan", style: TextStyle(fontWeight: FontWeight.bold)),
+      const SizedBox(height: 8),
+
+      // --- BARIS 1: INPUT PENCARIAN & TOMBOL TAMBAH ---
+      Row(
+        children: [
+          Expanded(
+            child: Autocomplete<Map<String, dynamic>>(
+              displayStringForOption: (option) => option['nama'],
+              optionsBuilder: (textEditingValue) {
+                if (textEditingValue.text.isEmpty) return const Iterable.empty();
+                return prov.masterCustomers.where((c) =>
+                    c['nama'].toLowerCase().contains(textEditingValue.text.toLowerCase()));
+              },
+              onSelected: (selection) {
+                setState(() {
+                  selectedCustomerId = selection['id'];
+                  pelangganController.text = selection['nama'];
+                  // Sesuaikan dengan nama kolom di database Anda (coupon_balance_19l)
+                  currentCustomerCouponBalance = selection['coupon_balance_19l'] ?? 0;
+                });
+              },
+              fieldViewBuilder: (ctx, ctrl, focus, onSubmit) {
+                return TextField(
+                  controller: ctrl..text = pelangganController.text,
+                  focusNode: focus,
+                  decoration: const InputDecoration(
+                    hintText: "Cari/Ketik Nama Pelanggan",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                  onChanged: (val) {
+                    pelangganController.text = val;
+                    // Reset ID jika admin mengetik manual (bukan pilihan autocomplete)
+                    if (selectedCustomerId != null) {
+                      setState(() {
+                        selectedCustomerId = null;
+                        currentCustomerCouponBalance = 0;
+                      });
+                    }
+                  },
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.person_add, color: Colors.blue),
+            onPressed: () => _showAddCustomerSheet(context),
+            tooltip: "Tambah Pelanggan Baru",
+          ),
+        ],
+      ),
+
+      // --- BARIS 2 & 3: TAMPILAN KHUSUS JIKA PELANGGAN TERDAFTAR ---
+      if (selectedCustomerId != null && selectedCustData != null) ...[
+        const SizedBox(height: 12),
+
+        // A. Statistik Pengisian Seumur Hidup (Lifelong Stats)
+        const Text("Riwayat Pengisian Galon (Total):", 
+            style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 6),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: (selectedCustData['total_stats'] as Map<String, dynamic>).entries.map((e) {
+              return Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Text(
+                  "${e.key}: ${e.value}x",
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+
+        // B. Kapsul Proyeksi Saldo Kupon 19L (Real-time)
+        Container(
+          margin: const EdgeInsets.only(top: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: projectedBalance < 0 ? Colors.red.shade50 : Colors.blue.shade50,
+            borderRadius: BorderRadius.circular(20), // Pill Shape
+            border: Border.all(
+              color: projectedBalance < 0 ? Colors.red.shade200 : Colors.blue.shade200,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                projectedBalance < 0 ? Icons.warning_amber_rounded : Icons.stars_rounded,
+                size: 20,
+                color: projectedBalance < 0 ? Colors.red : Colors.blue,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                "Kupon 19L terkumpul: ",
+                style: TextStyle(
+                  fontSize: 14,
+                  color: projectedBalance < 0 ? Colors.red.shade900 : Colors.blue.shade900,
+                ),
+              ),
+              Text(
+                "$projectedBalance",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: projectedBalance < 0 ? Colors.red : Colors.blue,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ],
+  );
+}
   // --- 2. SEKSI INPUT PRODUK (AUTO-RESPONSE UI) ---
   Widget _buildProductInputSection(TransactionProvider prov) {
     return Container(
@@ -426,39 +458,51 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   }
 
   Widget _buildCartList(TransactionProvider prov) {
-    if (prov.cartItems.isEmpty)
-      return const Center(
-        child: Text("Daftar kosong", style: TextStyle(color: Colors.grey)),
-      );
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: prov.cartItems.length,
-      itemBuilder: (ctx, index) {
-        final item = prov.cartItems[index];
-        bool isFree = item['isRedemption'];
-        return Card(
-          color: isFree ? Colors.green.shade50 : Colors.white,
-          child: ListTile(
-            leading: Icon(
-              isFree ? Icons.redeem : Icons.shopping_bag,
-              color: isFree ? Colors.green : Colors.blue,
-            ),
-            title: Text("${item['namaProduk']} (${item['qty']}x)"),
-            subtitle: Text(
-              isFree
-                  ? "TUKAR KUPON (GRATIS)"
-                  : "Rp ${item['subtotal']} | Kupon: ${item['kuponAwal']}-${item['kuponAkhir']}",
-            ),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete, color: Colors.red),
-              onPressed: () => prov.removeFromCart(index),
+  if (prov.cartItems.isEmpty)
+    return const Center(
+      child: Text("Daftar kosong", style: TextStyle(color: Colors.grey)),
+    );
+  return ListView.builder(
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    itemCount: prov.cartItems.length,
+    itemBuilder: (ctx, index) {
+      final item = prov.cartItems[index];
+      bool isFree = item['isRedemption'];
+      
+      return Card(
+        // Memberi warna latar berbeda untuk barang gratis agar mudah dibedakan
+        color: isFree ? Colors.green.shade50 : Colors.white,
+        elevation: 1,
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        child: ListTile(
+          leading: Icon(
+            isFree ? Icons.redeem : Icons.shopping_bag,
+            color: isFree ? Colors.green : Colors.blue,
+          ),
+          // --- PENYESUAIAN PADA NAMA PRODUK + UKURAN ---
+          title: Text(
+            "${item['namaProduk']} ${item['ukuran']} (${item['qty']}x)",
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          subtitle: Text(
+            isFree
+                ? "TUKAR KUPON (GRATIS)"
+                : "Rp ${item['subtotal']} | Kupon: ${item['kuponAwal']}-${item['kuponAkhir']}",
+            style: TextStyle(
+              color: isFree ? Colors.green.shade700 : Colors.grey.shade700,
+              fontSize: 12,
             ),
           ),
-        );
-      },
-    );
-  }
+          trailing: IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            onPressed: () => prov.removeFromCart(index),
+          ),
+        ),
+      );
+    },
+  );
+}
 
   Widget _buildFooter(TransactionProvider prov) {
     int finalProjected = prov.calculateProjectedBalance(

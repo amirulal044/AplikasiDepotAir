@@ -22,10 +22,11 @@ class CustomerRepository {
           'nama': nama,
           'telepon': telepon,
           'alamat': alamat,
-          'coupon_balance': 0,
+          'coupon_balance_19l': 0, // Nama kolom baru
+          'total_stats': {},        // Inisialisasi JSONB kosong
         })
         .select()
-        .single(); // <--- WAJIB TAMBAHKAN INI
+        .single();
   }
 
   Future<void> updateCustomer(
