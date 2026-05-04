@@ -23,7 +23,7 @@ class CustomerRepository {
           'telepon': telepon,
           'alamat': alamat,
           'coupon_balance_19l': 0, // Nama kolom baru
-          'total_stats': {},        // Inisialisasi JSONB kosong
+          'total_stats': {}, // Inisialisasi JSONB kosong
         })
         .select()
         .single();

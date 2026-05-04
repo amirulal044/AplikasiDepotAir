@@ -15,7 +15,6 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
     Future.microtask(() => context.read<CustomerProvider>().fetchCustomers());
   }
 
-  
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<CustomerProvider>();
@@ -28,55 +27,158 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
               padding: const EdgeInsets.all(10),
               itemBuilder: (context, index) {
                 final c = provider.customers[index];
-                
-                // Ambil data statistik dari JSONB
                 Map<String, dynamic> stats = c['total_stats'] ?? {};
-                
+
+                // Hitung total pengisian seluruh ukuran
+                int totalSemuaGalon = stats.values.fold(
+                  0,
+                  (sum, val) => sum + (val as int),
+                );
+
+                // Ambil detail khusus 19L
+                int paid19L = stats['19L_PAID'] ?? 0;
+                int free19L = stats['19L_FREE'] ?? 0;
+                int total19L =
+                    paid19L +
+                    free19L; // <--- TOTAL FISIK GALON 19L (Bayar + Gratis)
+
                 return Card(
                   margin: const EdgeInsets.only(bottom: 10),
-                  child: ExpansionTile( // Menggunakan ExpansionTile agar detail statistik bisa dibuka-tutup
-                    leading: const CircleAvatar(child: Icon(Icons.person)),
-                    title: Text(c['nama'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text("Kupon 19L: ${c['coupon_balance_19l']} | Telp: ${c['telepon']}"),
+                  child: ExpansionTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.blue.shade100,
+                      child: Text(c['nama'][0].toUpperCase()),
+                    ),
+                    title: Text(
+                      c['nama'],
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      "Sisa Kupon: ${c['coupon_balance_19l']} | Total: $totalSemuaGalon Galon",
+                    ),
                     children: [
                       Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("Alamat: ${c['alamat'] ?? '-'}"),
-                            const Divider(),
-                            const Text("Total Pengisian Seumur Hidup:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                            const SizedBox(height: 8),
-                            // Menampilkan semua ukuran yang ada di JSON secara dinamis
-                            stats.isEmpty 
-                              ? const Text("Belum ada riwayat pengisian", style: TextStyle(fontSize: 12, color: Colors.grey))
-                              : Wrap(
-                                  spacing: 8,
-                                  children: stats.entries.map((e) => Chip(
-                                    label: Text("${e.key}: ${e.value}x", style: const TextStyle(fontSize: 11)),
-                                    backgroundColor: Colors.blue.shade50,
-                                  )).toList(),
-                                ),
+                            const Text(
+                              "RINCIAN PEMBELIAN",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
+                            ),
                             const SizedBox(height: 10),
+
+                            // 1. Total Keseluruhan (Semua Ukuran)
+                            _buildInfoRow(
+                              "Total Seluruh Galon Keluar",
+                              "$totalSemuaGalon Galon",
+                              isBold: true,
+                            ),
+                            const Divider(),
+
+                            // 2. Detail per Ukuran (Statistik Dinamis)
+
+                            // --- TAMBAHAN: Tampilkan Total Fisik 19L di sini ---
+                            if (total19L > 0)
+                              _buildInfoRow(
+                                "Ukuran 19L (Total Isi)",
+                                "$total19L pengisian",
+                              ),
+
+                            // Tampilkan ukuran selain 19L (15L, 8L, dll)
+                            ...stats.entries
+                                .where((e) => !e.key.contains('19L_'))
+                                .map(
+                                  (e) => _buildInfoRow(
+                                    "Ukuran ${e.key}",
+                                    "${e.value} pengisian",
+                                  ),
+                                )
+                                .toList(),
+
+                            const SizedBox(height: 15),
+
+                            // 3. Logika Kupon 19L (Detail Matematika Saldo)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.blue.shade100),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    "LOGIKA SALDO KUPON 19L",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                      color: Colors.blue,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _buildKuponRow(
+                                    "Total 19L Berbayar",
+                                    "+$paid19L",
+                                    Colors.green,
+                                  ),
+                                  _buildKuponRow(
+                                    "Total Penukaran Gratis",
+                                    "-${free19L * 10}",
+                                    Colors.red,
+                                    subText: "($free19L kali tukar gratis)",
+                                  ),
+                                  const Divider(),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text(
+                                        "Sisa Saldo Kupon",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Text(
+                                        "${c['coupon_balance_19l']}",
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18,
+                                          color: Colors.blue,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // 4. Tombol Aksi (Edit/Hapus)
+                            const SizedBox(height: 15),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
-                                TextButton.icon(
-                                  icon: const Icon(Icons.edit, size: 18),
+                                ElevatedButton.icon(
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          CustomerFormScreen(customer: c),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.edit, size: 16),
                                   label: const Text("Edit"),
-                                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CustomerFormScreen(customer: c))),
-                                ),
-                                TextButton.icon(
-                                  icon: const Icon(Icons.delete, size: 18, color: Colors.red),
-                                  label: const Text("Hapus", style: TextStyle(color: Colors.red)),
-                                  onPressed: () => provider.removeCustomer(c['id']),
                                 ),
                               ],
-                            )
+                            ),
                           ],
                         ),
-                      )
+                      ),
                     ],
                   ),
                 );
@@ -88,6 +190,67 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
           context,
           MaterialPageRoute(builder: (_) => const CustomerFormScreen()),
         ),
+      ),
+    );
+  }
+  // --- WIDGET HELPER UNTUK MEMPERMUDAH KODE UI ---
+
+  Widget _buildInfoRow(String label, String value, {bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKuponRow(
+    String label,
+    String value,
+    Color color, {
+    String subText = "",
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 12)),
+              if (subText.isNotEmpty)
+                Text(
+                  subText,
+                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                ),
+            ],
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
